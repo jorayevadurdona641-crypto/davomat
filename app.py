@@ -178,7 +178,23 @@ def telegram_webhook():
         text = message.get('text', '')
         
         if text.strip() == '/start':
-            javob = f"Assalomu alaykum! Davomat botiga xush kelibsiz.\nSizning Telegram ID raqamingiz: <code>{chat_id}</code>"
+            javob = f"Assalomu alaykum! Davomat botiga xush kelibsiz.\nSizning Telegram ID raqamingiz: <code>{chat_id}</code>\n\nUshbu raqamni ma'muriyatga taqdim etsangiz, tizimga ulanasiz va hududdan uzoqlashganda sizga ogohlantirish keladi."
+            telegramga_xabar_yuborish(chat_id, javob)
+            
+        elif text.strip() == '/hisobot':
+            bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
+            if os.path.exists(EXCEL_HISOBOT):
+                df = pd.read_excel(EXCEL_HISOBOT)
+                bugungi_df = df[df["Sana"] == bugun]
+                if not bugungi_df.empty:
+                    javob = f"📊 <b>Bugungi ({bugun}) Davomat Hisoboti:</b>\n\n"
+                    for index, row in bugungi_df.iterrows():
+                        oxirgi_h = row.get('Oxirgi_Holat', 'Hududda')
+                        javob += f"👤 {row['F.I.O']}\n   Keldi: {row['Kelish_Vaqti']} | Ketdi: {row['Ketish_Vaqti']} | Holat: {row['Holat']} ({oxirgi_h})\n\n"
+                else:
+                    javob = f"📭 Bugun ({bugun}) hali hech kim davomat qilmagan."
+            else:
+                javob = "❌ Hozircha hisobot fayli mavjud emas."
             telegramga_xabar_yuborish(chat_id, javob)
             
     return "OK", 200
@@ -282,7 +298,7 @@ def select_employee():
         <p style="color: #94a3b8; font-size: 13px; margin-bottom:15px;">Harakat: <b>{{ action }}</b></p>
         
         <img id="empPhoto" class="profile-img" alt="Rasmi">
-        
+
         <form action="/verify" method="GET" id="mainForm">
             <input type="hidden" name="action" value="{{ action }}">
             
@@ -355,7 +371,7 @@ def verify():
                 <input type="hidden" name="action" value="{{ action }}">
                 <input type="hidden" name="xodim_id" value="{{ xodim.id }}">
                 <input type="hidden" name="lat" id="lat"><input type="hidden" name="lon" id="lon">
-            </form>
+         </form>
         </div>
         <script>
             navigator.geolocation.getCurrentPosition(pos => {
@@ -424,7 +440,7 @@ def result():
         <img src="{{ xodim.photo }}" class="profile-img">
         <h3>{{ xodim.fame }}</h3><p style="color:#94a3b8;">{{ xodim.lavozim }}</p>
         <p style="color:#38bdf8;font-weight:bold;">Vaqt: {{ vaqt_str }}</p>
-        <p style="color:#22c55e;font-weight:bold;margin:15px 0;">Bugungi davomat muvaffaqiyatli qayd etildi!</p>
+       <p style="color:#22c55e;font-weight:bold;margin:15px 0;">Bugungi davomat muvaffaqiyatli qayd etildi!</p>
         <a href="/" style="display:inline-block;padding:10px 20px;background:#38bdf8;color:#0f172a;font-weight:bold;border-radius:8px;text-decoration:none;">Bosh sahifa</a>
     </div>
 
@@ -455,6 +471,3 @@ def result():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
-```eof
-
-       
