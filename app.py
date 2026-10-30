@@ -1,5 +1,8 @@
+
+
 from flask import Flask, render_template_string, request, send_from_directory
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import math
 import requests
 import os
@@ -7,9 +10,9 @@ import pandas as pd
 
 app = Flask(__name__)
 
-# --- TELEGRAM BOT VA ADMINLAR SOZLAMASI ---
+# --- TELEGRAM BOT VA ADMINLAR SOZLAMASI (4 TA ADMIN) ---
 TELEGRAM_BOT_TOKEN = "8665708174:AAF9WFb0j0No6XBPXeeZM21vxKgq4Zeux04"
-ADMIN_CHAT_IDS = ["1179846016", "727029645", "1838498079", "1611805500"]
+ADMIN_CHAT_IDS = ["1179846016", "1838498079", "1611805500", "727029645"]
 
 EXCEL_HISOBOT = "davomat_hisobot.xlsx"
 XODIMLAR_FAYLI = "Umumiy maʼlumot.xlsx"
@@ -19,6 +22,9 @@ if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# O'zbekiston vaqt zonasini aniqlash
+UZB_TZ = ZoneInfo("Asia/Tashkent")
 
 # Xodimlarni Exceldan o'qib olish (Qorovul va farroshlar chiqarib tashlanadi)
 def xodimlarni_yuklash():
@@ -42,7 +48,7 @@ def xodimlarni_yuklash():
                     
                     if not tashlab_yuborish:
                         xodim_id = len(xodimlar_royxati) + 1
-                        bugun = datetime.now().strftime("%Y-%m-%d")
+                        bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
                         bugungi_rasm = f"xodim_{xodim_id}_{bugun}.jpg"
                         rasm_path = os.path.join(UPLOAD_FOLDER, bugungi_rasm)
                         
@@ -73,7 +79,7 @@ def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 def davomatni_saqlash(xodim, amal, vaqt):
-    bugun = datetime.now().strftime("%Y-%m-%d")
+    bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
     df = pd.read_excel(EXCEL_HISOBOT)
     mavjud = df[(df["ID"] == xodim["id"]) & (df["Sana"] == bugun)]
     
@@ -104,10 +110,16 @@ def telegramga_rasmli_xabar_yuborish(photo_path, matn):
         except Exception as e:
             print("Xatolik:", e)
 
-# Siz yuborgan xaritadagi aniq koordinata
+def telegramga_xabar_yuborish(chat_id, matn):
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        requests.post(url, data={"chat_id": chat_id, "text": matn, "parse_mode": "HTML"})
+    except Exception as e:
+        print("Xatolik:", e)
+
 TEHNIKUM_LAT = 38.970790
 TEHNIKUM_LON = 66.706597
-MAX_MASOFA = 150  # Aniqlik uchun chegara 150 metr qilindi
+MAX_MASOFA = 500  
 
 def hisobla_masofa(lat1, lon1, lat2, lon2):
     R = 6371000  
@@ -115,6 +127,31 @@ def hisobla_masofa(lat1, lon1, lat2, lon2):
     dlon = math.radians(lon2 - lon1)
     a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2)**2
     return R * (2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)))
+
+@app.route('/telegram-webhook', methods=['POST'])
+def telegram_webhook():
+    data = request.get_json()
+    if data and 'message' in data:
+        message = data['message']
+        chat_id = str(message['chat']['id'])
+        text = message.get('text', '')
+        
+        if text.strip() == '/hisobot':
+            bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
+            if os.path.exists(EXCEL_HISOBOT):
+                df = pd.read_excel(EXCEL_HISOBOT)
+                bugungi_df = df[df["Sana"] == bugun]
+                if not bugungi_df.empty:
+                    javob = f"📊 <b>Bugungi ({bugun}) Davomat Hisoboti:</b>\n\n"
+                    for index, row in bugungi_df.iterrows():
+                        javob += f"👤 {row['F.I.O']}\n   Keldi: {row['Kelish_Vaqti']} | Ketdi: {row['Ketish_Vaqti']} | Holat: {row['Holat']}\n\n"
+                else:
+                    javob = f"📭 Bugun ({bugun}) hali hech kim davomat qilmagan."
+            else:
+                javob = "❌ Hozircha hisobot fayli mavjud emas."
+            telegramga_xabar_yuborish(chat_id, javob)
+            
+    return "OK", 200
 
 @app.route('/')
 def index():
@@ -126,7 +163,7 @@ def index():
         body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         .card { background: #1e293b; padding: 30px; border-radius: 16px; width: 100%; max-width: 400px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
         h2 { color: #38bdf8; margin-bottom: 10px; }
-        .btn { width: 100%; padding: 15px; border: none; border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer; text-decoration: none; color: white; display: block; margin-bottom: 15px; }
+        .btn { width: 100%; padding: 15px; border: none; border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer; text-decoration: none; color: white; display: block; margin-bottom: 15px; box-sizing: border-box; }
         .btn-kirish { background: #22c55e; }
         .btn-chiqish { background: #ef4444; }
     </style></head>
@@ -148,28 +185,33 @@ def select_employee():
     <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Xodim</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-        .card { background: #1e293b; padding: 25px; border-radius: 16px; width: 100%; max-width: 400px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
-        select { width: 100%; padding: 12px; border-radius: 8px; background: #0f172a; color: #fff; border: 1px solid #334155; margin-bottom: 20px; font-size:15px; }
+        .card { background: #1e293b; padding: 25px; border-radius: 16px; width: 100%; max-width: 400px; text-align: center; box-sizing: border-box; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
+        input[type="text"], select { width: 100%; padding: 12px; border-radius: 8px; background: #0f172a; color: #fff; border: 1px solid #334155; margin-bottom: 15px; font-size:15px; box-sizing: border-box; }
         .profile-img { width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 4px solid #38bdf8; display: none; margin: 0 auto 15px; }
-        .btn { width: 100%; padding: 12px; border: none; border-radius: 8px; background: #3b82f6; color: white; font-size: 16px; font-weight: bold; cursor: pointer; }
+        .btn { width: 100%; padding: 12px; border: none; border-radius: 8px; background: #3b82f6; color: white; font-size: 16px; font-weight: bold; cursor: pointer; box-sizing: border-box; }
         .upload-box { margin-bottom: 15px; display: none; text-align: left; background: #0f172a; padding: 10px; border-radius: 8px; border: 1px dashed #38bdf8; }
     </style></head>
     <body><div class="card">
-        <h3 style="color: #38bdf8;">Ismingizni tanlang</h3>
-        <p style="color: #94a3b8; font-size: 13px;">Harakat: <b>{{ action }}</b></p>
+        <h3 style="color: #38bdf8; margin-top:0;">Xodimni qidirish va tanlash</h3>
+        <p style="color: #94a3b8; font-size: 13px; margin-bottom:15px;">Harakat: <b>{{ action }}</b></p>
+        
         <img id="empPhoto" class="profile-img" alt="Rasmi">
         
         <form action="/verify" method="GET" id="mainForm">
             <input type="hidden" name="action" value="{{ action }}">
-            <select name="xodim_id" required onchange="checkEmployee(this)">
-                <option value="" disabled selected>-- Ism familiyangizni tanlang --</option>
+            
+            <!-- Qidiruv qatori -->
+            <input type="text" id="searchInput" placeholder="🔍 Ism yoki familiyani yozib qidiring..." onkeyup="filterEmployees()">
+            
+            <select name="xodim_id" id="employeeSelect" required onchange="checkEmployee(this)">
+                <option value="" disabled selected>-- Ism familiyani tanlang --</option>
                 {% for x in xodimlar %}
-                <option value="{{ x.id }}" data-photo="{{ x.photo }}">{{ x.fame }} ({{ x.lavozim }})</option>
+                <option value="{{ x.id }}" data-photo="{{ x.photo }}" data-name="{{ x.fame | lower }}">{{ x.fame }} ({{ x.lavozim }})</option>
                 {% endfor %}
             </select>
             
             <div id="uploadContainer" class="upload-box">
-                <label style="font-size: 13px; color: #38bdf8; display:block; margin-bottom:5px;">📸 Bugungi rasmingiz topilmadi. Rasm yuklang (yoki rasmga tushing):</label>
+                <label style="font-size: 13px; color: #38bdf8; display:block; margin-bottom:5px;">📸 Bugungi rasmingiz topilmadi. Rasm yuklang (yoki rasmga tushish):</label>
                 <input type="file" name="emp_photo" id="empPhotoInput" accept="image/*" capture="user" style="font-size: 12px; color: #fff; width:100%;">
             </div>
 
@@ -178,8 +220,24 @@ def select_employee():
         <a href="/" style="display:block;margin-top:15px;color:#94a3b8;text-decoration:none;font-size:14px;">⟵ Bosh sahifaga</a>
     </div>
     <script>
+        function filterEmployees() {
+            let input = document.getElementById('searchInput').value.toLowerCase();
+            let select = document.getElementById('employeeSelect');
+            let options = select.options;
+            
+            for (let i = 1; i < options.length; i++) {
+                let name = options[i].getAttribute('data-name');
+                if (name.includes(input)) {
+                    options[i].style.display = "";
+                } else {
+                    options[i].style.display = "none";
+                }
+            }
+        }
+
         function checkEmployee(sel) {
-            let opt = sel.options[sel.selectedIndex];
+
+let opt = sel.options[sel.selectedIndex];
             let url = opt.getAttribute('data-photo');
             let img = document.getElementById('empPhoto');
             let uploadBox = document.getElementById('uploadContainer');
@@ -238,12 +296,11 @@ def result():
     xodim = next((x for x in XODIMLAR if str(x['id']) == str(xodim_id)), None)
     if not xodim: return "Xodim topilmadi!"
     
-    # Aniq masofani tekshirish (150 metr)
     masofa = hisobla_masofa(lat, lon, TEHNIKUM_LAT, TEHNIKUM_LON)
     if masofa > MAX_MASOFA:
-        return f"<h2 style='color:red;text-align:center;margin-top:50px;'>❌ Masofa xatosi! Siz texnikumdan {int(masofa)} metr uzoqdasiz. Davomat faqat texnikum hududida (150m ichida) amalga oshiriladi. <a href='/'>Qaytish</a></h2>"
+        return f"<h2 style='color:red;text-align:center;margin-top:50px;'>❌ Masofa xatosi! Siz texnikumdan {int(masofa)} metr uzoqdasiz. Davomat faqat texnikum hududida (500m ichida) amalga oshiriladi. <a href='/'>Qaytish</a></h2>"
 
-    bugun = datetime.now().strftime("%Y-%m-%d")
+    bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
     fayl_nomi = f"xodim_{xodim['id']}_{bugun}.jpg"
     fayl_path = os.path.join(UPLOAD_FOLDER, fayl_nomi)
     
@@ -253,26 +310,31 @@ def result():
             file.save(fayl_path)
             xodim['photo'] = f"/uploads/{fayl_nomi}"
 
-    hozir = datetime.now()
+    hozir = datetime.now(UZB_TZ)
     soat, minut = hozir.hour, hozir.minute
+    hafta_kuni = hozir.weekday() # 0=Dushanba, ..., 5=Shanba, 6=Yakshanba
     vaqt_str = hozir.strftime("%H:%M:%S")
     
     if action == 'KIRISH':
-        if (soat > 8) or (soat == 8 and minut > 30):
-            return "<h2 style='color:orange;text-align:center;margin-top:50px;'>⚠️ Kechikdingiz! Afsuski, kelish vaqti tugagan. <a href='/'>Qaytish</a></h2>"
         davomatni_saqlash(xodim, "KIRISH", vaqt_str)
         telegramga_rasmli_xabar_yuborish(fayl_path, f"🟢 <b>Kelish (Kirish) - {bugun}</b>\n👤 <b>{xodim['fame']}</b>\n📋 {xodim['lavozim']}\n⏰ Vaqt: {vaqt_str}\n📍 Hududda (Masofa: {int(masofa)}m)")
-
     elif action == 'CHIQISH':
-        if soat < 16:
-            return "<h2 style='color:red;text-align:center;margin-top:50px;'>❌ Hali ketish vaqti emas! 16:00 dan oldin chiqib bo'lmaydi. <a href='/'>Qaytish</a></h2>"
+        # Shanba kuni (weekday == 5) ketish vaqti 13:00 dan keyin
+        if hafta_kuni == 5:
+            if (soat < 13) or (soat == 13 and minut < 0):
+                return "<h2 style='color:red;text-align:center;margin-top:50px;'>❌ Shanba kuni 13:00 dan oldin chiqib bo'lmaydi! <a href='/'>Qaytish</a></h2>"
+        else:
+            # Boshqa kunlar uchun ketish vaqti 15:50 dan keyin
+            if (soat < 15) or (soat == 15 and minut < 50):
+                return "<h2 style='color:red;text-align:center;margin-top:50px;'>❌ Hali ketish vaqti emas! 15:50 dan oldin chiqib bo'lmaydi. <a href='/'>Qaytish</a></h2>"
+                
         davomatni_saqlash(xodim, "CHIQISH", vaqt_str)
         telegramga_rasmli_xabar_yuborish(fayl_path, f"🔴 <b>Ketish (Chiqish) - {bugun}</b>\n👤 <b>{xodim['fame']}</b>\n📋 {xodim['lavozim']}\n⏰ Vaqt: {vaqt_str}\n📍 Hududda (Masofa: {int(masofa)}m)")
 
     return render_template_string('''
     <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><title>Natija</title>
     <style>body{font-family:sans-serif;background:#0f172a;color:#fff;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;}
-    .card{background:#1e293b;padding:30px;border-radius:16px;text-align:center;width:400px;box-shadow:0 10px 25px rgba(0,0,0,0.4);}
+    .card{background:#1e293b;padding:30px;border-radius:16px;text-align:center;width:400px;box-sizing:border-box;box-shadow: 0 10px 25px rgba(0,0,0,0.4);}
     .profile-img{width:120px;height:120px;border-radius:50%;object-fit:cover;border:4px solid #38bdf8;margin-bottom:15px;}</style></head>
     <body><div class="card">
         <h2 style="color:#22c55e;">Muvaffaqiyatli!</h2>
