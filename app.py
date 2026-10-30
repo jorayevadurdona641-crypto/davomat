@@ -10,7 +10,7 @@ import pandas as pd
 
 app = Flask(__name__)
 
-# --- TELEGRAM BOT VA ADMINLAR SOZLAMASI (4 TA ADMIN) ---
+# --- TELEGRAM BOT VA ADMINLAR SOZLAMASI ---
 TELEGRAM_BOT_TOKEN = "8665708174:AAF9WFb0j0No6XBPXeeZM21vxKgq4Zeux04"
 ADMIN_CHAT_IDS = ["1179846016", "1838498079", "1611805500", "727029645"]
 
@@ -23,10 +23,8 @@ if not os.path.exists(UPLOAD_FOLDER):
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# O'zbekiston vaqt zonasini aniqlash
 UZB_TZ = ZoneInfo("Asia/Tashkent")
 
-# Xodimlarni Exceldan o'qib olish (Qorovul va farroshlar chiqarib tashlanadi)
 def xodimlarni_yuklash():
     if os.path.exists(XODIMLAR_FAYLI):
         try:
@@ -37,6 +35,7 @@ def xodimlarni_yuklash():
             for index, row in df.iterrows():
                 fio = str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else ""
                 lavozim = str(row.iloc[2]).strip() if pd.notna(row.iloc[2]) else "O'qituvchi"
+                tg_id = str(row.iloc[3]).strip() if len(row) > 3 and pd.notna(row.iloc[3]) else ""
                 
                 if fio and fio != "nan":
                     lavozim_kichik = lavozim.lower()
@@ -58,6 +57,7 @@ def xodimlarni_yuklash():
                             "id": xodim_id,
                             "fame": fio,
                             "lavozim": lavozim,
+                            "telegram_id": tg_id,
                             "photo": photo_url
                         })
             return xodimlar_royxati
@@ -69,7 +69,7 @@ XODIMLAR = xodimlarni_yuklash()
 
 def bazani_tekshir():
     if not os.path.exists(EXCEL_HISOBOT):
-        df = pd.DataFrame(columns=["ID", "F.I.O", "Lavozimi", "Sana", "Kelish_Vaqti", "Ketish_Vaqti", "Holat"])
+        df = pd.DataFrame(columns=["ID", "F.I.O", "Lavozimi", "Sana", "Kelish_Vaqti", "Ketish_Vaqti", "Holat", "Oxirgi_Holat"])
         df.to_excel(EXCEL_HISOBOT, index=False)
 
 bazani_tekshir()
@@ -78,21 +78,28 @@ bazani_tekshir()
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
-def davomatni_saqlash(xodim, amal, vaqt):
+def davomatni_saqlash(xodim, amal, vaqt, holat_str="Hududda"):
     bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
     df = pd.read_excel(EXCEL_HISOBOT)
+    
+    if "Oxirgi_Holat" not in df.columns:
+        df["Oxirgi_Holat"] = "Hududda"
+
     mavjud = df[(df["ID"] == xodim["id"]) & (df["Sana"] == bugun)]
     
     if amal == "KIRISH":
         if mavjud.empty:
-            yangi_qator = {"ID": xodim["id"], "F.I.O": xodim["fame"], "Lavozimi": xodim["lavozim"], "Sana": bugun, "Kelish_Vaqti": vaqt, "Ketish_Vaqti": "-", "Holat": "Keldi"}
+            yangi_qator = {"ID": xodim["id"], "F.I.O": xodim["fame"], "Lavozimi": xodim["lavozim"], "Sana": bugun, "Kelish_Vaqti": vaqt, "Ketish_Vaqti": "-", "Holat": "Keldi", "Oxirgi_Holat": holat_str}
             df = pd.concat([df, pd.DataFrame([yangi_qator])], ignore_index=True)
+        else:
+            df.loc[(df["ID"] == xodim["id"]) & (df["Sana"] == bugun), "Oxirgi_Holat"] = holat_str
     elif amal == "CHIQISH":
         if not mavjud.empty:
             df.loc[(df["ID"] == xodim["id"]) & (df["Sana"] == bugun), "Ketish_Vaqti"] = vaqt
             df.loc[(df["ID"] == xodim["id"]) & (df["Sana"] == bugun), "Holat"] = "Ketdi"
+            df.loc[(df["ID"] == xodim["id"]) & (df["Sana"] == bugun), "Oxirgi_Holat"] = "Ketib qoldi"
         else:
-            yangi_qator = {"ID": xodim["id"], "F.I.O": xodim["fame"], "Lavozimi": xodim["lavozim"], "Sana": bugun, "Kelish_Vaqti": "-", "Ketish_Vaqti": vaqt, "Holat": "Faqat Chiqish"}
+            yangi_qator = {"ID": xodim["id"], "F.I.O": xodim["fame"], "Lavozimi": xodim["lavozim"], "Sana": bugun, "Kelish_Vaqti": "-", "Ketish_Vaqti": vaqt, "Holat": "Faqat Chiqish", "Oxirgi_Holat": "Ketib qoldi"}
             df = pd.concat([df, pd.DataFrame([yangi_qator])], ignore_index=True)
             
     df.to_excel(EXCEL_HISOBOT, index=False)
@@ -128,6 +135,41 @@ def hisobla_masofa(lat1, lon1, lat2, lon2):
     a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2)**2
     return R * (2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)))
 
+@app.route('/api/check-location', methods=['POST'])
+def check_location():
+    data = request.get_json()
+    if not data:
+        return {"status": "error", "message": "Ma'lumot kelmadi"}, 400
+        
+    xodim_id = data.get('xodim_id')
+    lat = float(data.get('lat', 0))
+    lon = float(data.get('lon', 0))
+    
+    xodim = next((x for x in XODIMLAR if str(x['id']) == str(xodim_id)), None)
+    if not xodim:
+        return {"status": "error", "message": "Xodim topilmadi"}, 404
+        
+    masofa = hisobla_masofa(lat, lon, TEHNIKUM_LAT, TEHNIKUM_LON)
+    
+    if masofa > MAX_MASOFA:
+        bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
+        hozir_vaqt = datetime.now(UZB_TZ).strftime("%H:%M:%S")
+        
+        davomatni_saqlash(xodim, "KIRISH", hozir_vaqt, holat_str=f"⚠️ Hududdan chiqdi ({int(masofa)}m)")
+        
+        matn_admin = f"🚨 <b>DIQQAT! XODIM HUDUDDAN CHIQIB KETDI!</b>\n\n👤 <b>{xodim['fame']}</b>\n📋 {xodim['lavozim']}\n📏 Masofa: <b>{int(masofa)} metr</b> uzoqlashdi!\n⏰ Vaqt: {hozir_vaqt}"
+        fayl_nomi = f"xodim_{xodim['id']}_{bugun}.jpg"
+        fayl_path = os.path.join(UPLOAD_FOLDER, fayl_nomi)
+        telegramga_rasmli_xabar_yuborish(fayl_path, matn_admin)
+        
+        if xodim.get('telegram_id') and str(xodim['telegram_id']) != "nan":
+            matn_xodim = f"⚠️ <b>DIQQAT! Siz texnikum hududidan uzoqlashyapsiz!</b>\n\n📏 Siz belgilangan hududdan <b>{int(masofa)} metr</b> uzoqdasiz.\n⏰ Vaqt: {hozir_vaqt}\n\nIltimos, hududga qayting!"
+            telegramga_xabar_yuborish(str(xodim['telegram_id']), matn_xodim)
+        
+        return {"status": "out_of_bounds", "masofa": int(masofa)}
+        
+    return {"status": "in_bounds", "masofa": int(masofa)}
+
 @app.route('/telegram-webhook', methods=['POST'])
 def telegram_webhook():
     data = request.get_json()
@@ -136,7 +178,11 @@ def telegram_webhook():
         chat_id = str(message['chat']['id'])
         text = message.get('text', '')
         
-        if text.strip() == '/hisobot':
+        if text.strip() == '/start':
+            javob = f"Assalomu alaykum! Davomat botiga xush kelibsiz.\nSizning Telegram ID raqamingiz: <code>{chat_id}</code>\n\nUshbu raqamni ma'muriyatga taqdim etsangiz, tizimga ulanasiz va hududdan uzoqlashganda sizga ogohlantirish keladi."
+            telegramga_xabar_yuborish(chat_id, javob)
+            
+        elif text.strip() == '/hisobot':
             bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
             if os.path.exists(EXCEL_HISOBOT):
                 df = pd.read_excel(EXCEL_HISOBOT)
@@ -144,7 +190,8 @@ def telegram_webhook():
                 if not bugungi_df.empty:
                     javob = f"📊 <b>Bugungi ({bugun}) Davomat Hisoboti:</b>\n\n"
                     for index, row in bugungi_df.iterrows():
-                        javob += f"👤 {row['F.I.O']}\n   Keldi: {row['Kelish_Vaqti']} | Ketdi: {row['Ketish_Vaqti']} | Holat: {row['Holat']}\n\n"
+                        oxirgi_h = row.get('Oxirgi_Holat', 'Hududda')
+                        javob += f"👤 {row['F.I.O']}\n   Keldi: {row['Kelish_Vaqti']} | Ketdi: {row['Ketish_Vaqti']} | Holat: {row['Holat']} ({oxirgi_h})\n\n"
                 else:
                     javob = f"📭 Bugun ({bugun}) hali hech kim davomat qilmagan."
             else:
@@ -152,6 +199,60 @@ def telegram_webhook():
             telegramga_xabar_yuborish(chat_id, javob)
             
     return "OK", 200
+
+@app.route('/admin-panel')
+def admin_panel():
+    bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
+    df = pd.read_excel(EXCEL_HISOBOT) if os.path.exists(EXCEL_HISOBOT) else pd.DataFrame()
+    bugungi_df = df[df["Sana"] == bugun] if not df.empty else pd.DataFrame()
+    
+    return render_template_string('''
+    <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Admin Paneli</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; background: #1e293b; padding: 25px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
+        h2 { color: #38bdf8; text-align: center; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #334155; font-size: 14px; }
+        th { background: #0f172a; color: #38bdf8; }
+        .badge-keldi { background: #22c55e; padding: 5px 10px; border-radius: 6px; font-weight: bold; font-size: 12px; }
+        .badge-chiqdi { background: #ef4444; padding: 5px 10px; border-radius: 6px; font-weight: bold; font-size: 12px; }
+        .badge-ogoh { background: #f59e0b; padding: 5px 10px; border-radius: 6px; font-weight: bold; font-size: 12px; color: #000; }
+    </style></head>
+    <body><div class="container">
+        <h2>🛡️ Admin Kuzatuv Paneli (Bugungi Davomat va Holat)</h2>
+        <p style="color:#94a3b8; text-align:center;">Sana: <b>{{ bugun }}</b></p>
+        <table>
+            <tr>
+                <th>F.I.O</th>
+                <th>Lavozimi</th>
+                <th>Kelish Vaqti</th>
+                <th>Ketish Vaqti</th>
+                <th>Joriy Holat</th>
+            </tr>
+            {% for index, row in data.iterrows() %}
+            <tr>
+                <td><b>{{ row['F.I.O'] }}</b></td>
+                <td>{{ row['Lavozimi'] }}</td>
+                <td>{{ row['Kelish_Vaqti'] }}</td>
+                <td>{{ row['Ketish_Vaqti'] }}</td>
+                <td>
+                    {% if 'Hududdan chiqdi' in row['Oxirgi_Holat'] or 'uzoqla' in row['Oxirgi_Holat'] %}
+                        <span class="badge-ogoh">{{ row['Oxirgi_Holat'] }}</span>
+                    {% elif row['Holat'] == 'Keldi' %}
+                        <span class="badge-keldi">Hududda</span>
+                    {% else %}
+                        <span class="badge-chiqdi">{{ row['Holat'] }}</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" style="text-align:center; color:#94a3b8;">Bugun hali hech kim davomat qilmagan.</td></tr>
+            {% endfor %}
+        </table>
+        <a href="/" style="display:block; text-align:center; margin-top:20px; color:#38bdf8; text-decoration:none;">⟵ Bosh sahifaga qaytish</a>
+    </div></body></html>
+    ''', bugun=bugun, data=bugungi_df)
 
 @app.route('/')
 def index():
@@ -166,12 +267,14 @@ def index():
         .btn { width: 100%; padding: 15px; border: none; border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer; text-decoration: none; color: white; display: block; margin-bottom: 15px; box-sizing: border-box; }
         .btn-kirish { background: #22c55e; }
         .btn-chiqish { background: #ef4444; }
+        .btn-admin { background: #334155; font-size: 14px; padding: 10px; }
     </style></head>
     <body><div class="card">
         <h2>🏢 Davomat Tizimi</h2>
         <p style="color:#94a3b8;margin-bottom:20px;">Amal turini tanlang:</p>
         <a href="/select-employee?action=KIRISH" class="btn btn-kirish">🟢 KELISH (Kirish)</a>
         <a href="/select-employee?action=CHIQISH" class="btn btn-chiqish">🔴 KETISH (Chiqish)</a>
+        <a href="/admin-panel" class="btn btn-admin">🛡️ Admin Kuzatuv Paneli</a>
     </div></body></html>
     ''')
 
@@ -196,11 +299,10 @@ def select_employee():
         <p style="color: #94a3b8; font-size: 13px; margin-bottom:15px;">Harakat: <b>{{ action }}</b></p>
         
         <img id="empPhoto" class="profile-img" alt="Rasmi">
-        
+
         <form action="/verify" method="GET" id="mainForm">
             <input type="hidden" name="action" value="{{ action }}">
             
-            <!-- Qidiruv qatori -->
             <input type="text" id="searchInput" placeholder="🔍 Ism yoki familiyani yozib qidiring..." onkeyup="filterEmployees()">
             
             <select name="xodim_id" id="employeeSelect" required onchange="checkEmployee(this)">
@@ -236,8 +338,7 @@ def select_employee():
         }
 
         function checkEmployee(sel) {
-
-let opt = sel.options[sel.selectedIndex];
+            let opt = sel.options[sel.selectedIndex];
             let url = opt.getAttribute('data-photo');
             let img = document.getElementById('empPhoto');
             let uploadBox = document.getElementById('uploadContainer');
@@ -271,7 +372,7 @@ def verify():
                 <input type="hidden" name="action" value="{{ action }}">
                 <input type="hidden" name="xodim_id" value="{{ xodim.id }}">
                 <input type="hidden" name="lat" id="lat"><input type="hidden" name="lon" id="lon">
-            </form>
+         </form>
         </div>
         <script>
             navigator.geolocation.getCurrentPosition(pos => {
@@ -312,23 +413,22 @@ def result():
 
     hozir = datetime.now(UZB_TZ)
     soat, minut = hozir.hour, hozir.minute
-    hafta_kuni = hozir.weekday() # 0=Dushanba, ..., 5=Shanba, 6=Yakshanba
+    hafta_kuni = hozir.weekday() 
     vaqt_str = hozir.strftime("%H:%M:%S")
     
     if action == 'KIRISH':
-        davomatni_saqlash(xodim, "KIRISH", vaqt_str)
+        davomatni_saqlash(xodim, "KIRISH", vaqt_str, holat_str="Hududda")
         telegramga_rasmli_xabar_yuborish(fayl_path, f"🟢 <b>Kelish (Kirish) - {bugun}</b>\n👤 <b>{xodim['fame']}</b>\n📋 {xodim['lavozim']}\n⏰ Vaqt: {vaqt_str}\n📍 Hududda (Masofa: {int(masofa)}m)")
+
     elif action == 'CHIQISH':
-        # Shanba kuni (weekday == 5) ketish vaqti 13:00 dan keyin
         if hafta_kuni == 5:
             if (soat < 13) or (soat == 13 and minut < 0):
                 return "<h2 style='color:red;text-align:center;margin-top:50px;'>❌ Shanba kuni 13:00 dan oldin chiqib bo'lmaydi! <a href='/'>Qaytish</a></h2>"
         else:
-            # Boshqa kunlar uchun ketish vaqti 15:50 dan keyin
             if (soat < 15) or (soat == 15 and minut < 50):
                 return "<h2 style='color:red;text-align:center;margin-top:50px;'>❌ Hali ketish vaqti emas! 15:50 dan oldin chiqib bo'lmaydi. <a href='/'>Qaytish</a></h2>"
                 
-        davomatni_saqlash(xodim, "CHIQISH", vaqt_str)
+        davomatni_saqlash(xodim, "CHIQISH", vaqt_str, holat_str="Ketib qoldi")
         telegramga_rasmli_xabar_yuborish(fayl_path, f"🔴 <b>Ketish (Chiqish) - {bugun}</b>\n👤 <b>{xodim['fame']}</b>\n📋 {xodim['lavozim']}\n⏰ Vaqt: {vaqt_str}\n📍 Hududda (Masofa: {int(masofa)}m)")
 
     return render_template_string('''
@@ -341,9 +441,33 @@ def result():
         <img src="{{ xodim.photo }}" class="profile-img">
         <h3>{{ xodim.fame }}</h3><p style="color:#94a3b8;">{{ xodim.lavozim }}</p>
         <p style="color:#38bdf8;font-weight:bold;">Vaqt: {{ vaqt_str }}</p>
-        <p style="color:#22c55e;font-weight:bold;margin:15px 0;">Bugungi davomat muvaffaqiyatli qayd etildi!</p>
+       <p style="color:#22c55e;font-weight:bold;margin:15px 0;">Bugungi davomat muvaffaqiyatli qayd etildi!</p>
         <a href="/" style="display:inline-block;padding:10px 20px;background:#38bdf8;color:#0f172a;font-weight:bold;border-radius:8px;text-decoration:none;">Bosh sahifa</a>
-    </div></body></html>
+    </div>
+
+    <script>
+        const xodimId = "{{ xodim.id }}";
+        if (navigator.geolocation) {
+            setInterval(() => {
+                navigator.geolocation.getCurrentPosition(pos => {
+                    fetch('/api/check-location', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            xodim_id: xodimId,
+                            lat: pos.coords.latitude,
+                            lon: pos.coords.longitude
+                        })
+                    }).then(res => res.json()).then(data => {
+                        if (data.status === 'out_of_bounds') {
+                            console.log("Diqqat! Hududdan chiqib ketildi: " + data.masofa + "m");
+                        }
+                    });
+                }, err => { console.log("GPS kuzatuv xatosi"); }, { enableHighAccuracy: true });
+            }, 30000);
+        }
+    </script>
+    </body></html>
     ''', xodim=xodim, vaqt_str=vaqt_str)
 
 if __name__ == '__main__':
