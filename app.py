@@ -1,5 +1,5 @@
 
-from flask import Flask, render_template_string, request, send_from_directory
+from flask import Flask, render_template_string, request, send_from_directory, session, redirect, url_for
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import math
@@ -8,6 +8,7 @@ import os
 import pandas as pd
 
 app = Flask(__name__)
+app.secret_key = "yakkabog_davomat_maxfiy_kalit"
 
 # --- TELEGRAM BOT VA ADMINLAR SOZLAMASI ---
 TELEGRAM_BOT_TOKEN = "8665708174:AAF9WFb0j0No6XBPXeeZM21vxKgq4Zeux04"
@@ -103,11 +104,11 @@ def davomatni_saqlash(xodim, amal, vaqt, holat_str="Hududda"):
             
     df.to_excel(EXCEL_HISOBOT, index=False)
 
-def telegramga_rasmli_xabar_yuborish(photo_path, matn):
-    for chat_id in ADMIN_CHAT_IDS:
+def telegramga_rasmli_xabar_yuborish(photo_path, matn, target_chat_ids=ADMIN_CHAT_IDS):
+    for chat_id in target_chat_ids:
         try:
             url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
-            if os.path.exists(photo_path):
+            if photo_path and os.path.exists(photo_path):
                 with open(photo_path, 'rb') as photo:
                     data = {"chat_id": chat_id, "caption": matn, "parse_mode": "HTML"}
                     requests.post(url, data=data, files={"photo": photo})
@@ -169,58 +170,72 @@ def check_location():
         
     return {"status": "in_bounds", "masofa": int(masofa)}
 
-@app.route('/telegram-webhook', methods=['POST'])
-def telegram_webhook():
-    data = request.get_json()
-    if data and 'message' in data:
-        message = data['message']
-        chat_id = str(message['chat']['id'])
-        text = message.get('text', '')
-        
-        if text.strip() == '/start':
-            javob = f"Assalomu alaykum! Davomat botiga xush kelibsiz.\nSizning Telegram ID raqamingiz: <code>{chat_id}</code>\n\nUshbu raqamni ma'muriyatga taqdim etsangiz, tizimga ulanasiz va hududdan uzoqlashganda sizga ogohlantirish keladi."
-            telegramga_xabar_yuborish(chat_id, javob)
+@app.route('/admin-login', methods=['GET', 'POST'])
+def admin_login():
+    error = None
+    if request.method == 'POST':
+        parol = request.form.get('parol')
+        if parol == "7777":
+            session['admin_logged'] = True
+            return redirect(url_for('admin_panel'))
+        else:
+            error = "Parol noto'g'ri! Qaytadan urinib ko'ring."
             
-        elif text.strip() == '/hisobot':
-            bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
-            if os.path.exists(EXCEL_HISOBOT):
-                df = pd.read_excel(EXCEL_HISOBOT)
-                bugungi_df = df[df["Sana"] == bugun]
-                if not bugungi_df.empty:
-                    javob = f"📊 <b>Bugungi ({bugun}) Davomat Hisoboti:</b>\n\n"
-                    for index, row in bugungi_df.iterrows():
-                        oxirgi_h = row.get('Oxirgi_Holat', 'Hududda')
-                        javob += f"👤 {row['F.I.O']}\n   Keldi: {row['Kelish_Vaqti']} | Ketdi: {row['Ketish_Vaqti']} | Holat: {row['Holat']} ({oxirgi_h})\n\n"
-                else:
-                    javob = f"📭 Bugun ({bugun}) hali hech kim davomat qilmagan."
-            else:
-                javob = "❌ Hozircha hisobot fayli mavjud emas."
-            telegramga_xabar_yuborish(chat_id, javob)
-            
-    return "OK", 200
+    return render_template_string('''
+    <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Admin Kirish</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: #1e293b; padding: 30px; border-radius: 16px; width: 100%; max-width: 350px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
+        input[type="password"] { width: 100%; padding: 12px; border-radius: 8px; background: #0f172a; color: #fff; border: 1px solid #334155; margin-bottom: 15px; font-size: 16px; box-sizing: border-box; text-align: center; }
+        .btn { width: 100%; padding: 12px; border: none; border-radius: 8px; background: #38bdf8; color: #0f172a; font-size: 16px; font-weight: bold; cursor: pointer; }
+    </style></head>
+    <body><div class="card">
+        <h3 style="color: #38bdf8; margin-top:0;">🛡️ Admin Tasdiqlash</h3>
+        <p style="color: #94a3b8; font-size: 13px; margin-bottom: 20px;">Admin panelga kirish uchun maxfiy parolni kiriting:</p>
+        {% if error %}<p style="color: #ef4444; font-size: 13px; margin-bottom: 10px;">{{ error }}</p>{% endif %}
+        <form method="POST">
+            <input type="password" name="parol" placeholder="🔑 Parolni kiriting" required autofocus>
+            <button type="submit" class="btn">Kirish</button>
+        </form>
+        <a href="/" style="display:block; margin-top:20px; color:#94a3b8; text-decoration:none; font-size:14px;">⟵ Bosh sahifaga qaytish</a>
+    </div></body></html>
+    ''', error=error)
 
 @app.route('/admin-panel')
 def admin_panel():
+    if not session.get('admin_logged'):
+        return redirect(url_for('admin_login'))
+        
     bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
     df = pd.read_excel(EXCEL_HISOBOT) if os.path.exists(EXCEL_HISOBOT) else pd.DataFrame()
     bugungi_df = df[df["Sana"] == bugun] if not df.empty else pd.DataFrame()
+    
+    kelgan_ids = set(bugungi_df["ID"].astype(str)) if not bugungi_df.empty else set()
+    kelmaganlar = [x for x in XODIMLAR if str(x['id']) not in kelgan_ids]
     
     return render_template_string('''
     <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Admin Paneli</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 20px; }
-        .container { max-width: 900px; margin: 0 auto; background: #1e293b; padding: 25px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
-        h2 { color: #38bdf8; text-align: center; margin-bottom: 20px; }
+        .container { max-width: 950px; margin: 0 auto; background: #1e293b; padding: 25px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
+        h2 { color: #38bdf8; text-align: center; margin-bottom: 5px; }
+        h3 { color: #f43f5e; margin-top: 30px; border-bottom: 1px solid #334155; padding-bottom: 8px; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #334155; font-size: 14px; }
         th { background: #0f172a; color: #38bdf8; }
         .badge-keldi { background: #22c55e; padding: 5px 10px; border-radius: 6px; font-weight: bold; font-size: 12px; }
+        .badge-kechikdi { background: #f97316; padding: 5px 10px; border-radius: 6px; font-weight: bold; font-size: 12px; color: #fff; }
         .badge-chiqdi { background: #ef4444; padding: 5px 10px; border-radius: 6px; font-weight: bold; font-size: 12px; }
         .badge-ogoh { background: #f59e0b; padding: 5px 10px; border-radius: 6px; font-weight: bold; font-size: 12px; color: #000; }
+        .badge-kelmagan { background: #64748b; padding: 5px 10px; border-radius: 6px; font-weight: bold; font-size: 12px; color: #fff; }
+        .logout-btn { background: #ef4444; color: white; padding: 8px 15px; border-radius: 6px; text-decoration: none; font-size: 13px; float: right; font-weight: bold; }
     </style></head>
     <body><div class="container">
-        <h2>🛡️ Admin Kuzatuv Paneli (Bugungi Davomat va Holat)</h2>
+        <a href="/admin-logout" class="logout-btn">Chiqish 🔓</a>
+        <h2>🛡️ Admin Kuzatuv Paneli</h2>
         <p style="color:#94a3b8; text-align:center;">Sana: <b>{{ bugun }}</b></p>
+        
+        <h3 style="color:#38bdf8; border-color:#38bdf8;">✅ Bugun Kelgan Xodimlar</h3>
         <table>
             <tr>
                 <th>F.I.O</th>
@@ -238,6 +253,8 @@ def admin_panel():
                 <td>
                     {% if 'Hududdan chiqdi' in row['Oxirgi_Holat'] or 'uzoqla' in row['Oxirgi_Holat'] %}
                         <span class="badge-ogoh">{{ row['Oxirgi_Holat'] }}</span>
+                    {% elif 'Kechikdi' in row['Oxirgi_Holat'] %}
+                        <span class="badge-kechikdi">{{ row['Oxirgi_Holat'] }}</span>
                     {% elif row['Holat'] == 'Keldi' %}
                         <span class="badge-keldi">Hududda</span>
                     {% else %}
@@ -246,12 +263,36 @@ def admin_panel():
                 </td>
             </tr>
             {% else %}
-            <tr><td colspan="5" style="text-align:center; color:#94a3b8;">Bugun hali hech kim davomat qilmagan.</td></tr>
+            <tr><td colspan="5" style="text-align:center; color:#94a3b8;">Bugun hali kelganlar yo'q.</td></tr>
             {% endfor %}
         </table>
-        <a href="/" style="display:block; text-align:center; margin-top:20px; color:#38bdf8; text-decoration:none;">⟵ Bosh sahifaga qaytish</a>
+
+        <h3>❌ Bugun Ishga Kelmaganlar</h3>
+        <table>
+            <tr>
+                <th>F.I.O</th>
+                <th>Lavozimi</th>
+                <th>Holati</th>
+            </tr>
+            {% for x in kelmaganlar %}
+            <tr>
+                <td><b>{{ x.fame }}</b></td>
+                <td>{{ x.lavozim }}</td>
+                <td><span class="badge-kelmagan">Kelmagan</span></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3" style="text-align:center; color:#22c55e;">Ajoyib! Hamma xodimlar kelgan.</td></tr>
+            {% endfor %}
+        </table>
+
+        <a href="/" style="display:block; text-align:center; margin-top:25px; color:#38bdf8; text-decoration:none;">⟵ Bosh sahifaga qaytish</a>
     </div></body></html>
-    ''', bugun=bugun, data=bugungi_df)
+    ''', bugun=bugun, data=bugungi_df, kelmaganlar=kelmaganlar)
+
+@app.route('/admin-logout')
+def admin_logout():
+    session.pop('admin_logged', None)
+    return redirect(url_for('admin_login'))
 
 @app.route('/')
 def index():
@@ -273,7 +314,7 @@ def index():
         <p style="color:#94a3b8;margin-bottom:20px;">Amal turini tanlang:</p>
         <a href="/select-employee?action=KIRISH" class="btn btn-kirish">🟢 KELISH (Kirish)</a>
         <a href="/select-employee?action=CHIQISH" class="btn btn-chiqish">🔴 KETISH (Chiqish)</a>
-        <a href="/admin-panel" class="btn btn-admin">🛡️ Admin Kuzatuv Paneli</a>
+        <a href="/admin-login" class="btn btn-admin">🛡️ Admin Kuzatuv Paneli</a>
     </div></body></html>
     ''')
 
@@ -298,7 +339,7 @@ def select_employee():
         <p style="color: #94a3b8; font-size: 13px; margin-bottom:15px;">Harakat: <b>{{ action }}</b></p>
         
         <img id="empPhoto" class="profile-img" alt="Rasmi">
-
+        
         <form action="/verify" method="GET" id="mainForm">
             <input type="hidden" name="action" value="{{ action }}">
             
@@ -371,7 +412,7 @@ def verify():
                 <input type="hidden" name="action" value="{{ action }}">
                 <input type="hidden" name="xodim_id" value="{{ xodim.id }}">
                 <input type="hidden" name="lat" id="lat"><input type="hidden" name="lon" id="lon">
-         </form>
+            </form>
         </div>
         <script>
             navigator.geolocation.getCurrentPosition(pos => {
@@ -404,31 +445,44 @@ def result():
     fayl_nomi = f"xodim_{xodim['id']}_{bugun}.jpg"
     fayl_path = os.path.join(UPLOAD_FOLDER, fayl_nomi)
     
-    if not os.path.exists(fayl_path):
-        file = request.files.get('emp_photo')
-        if file and file.filename != '':
-            file.save(fayl_path)
-            xodim['photo'] = f"/uploads/{fayl_nomi}"
+    file = request.files.get('emp_photo')
+    if file and file.filename != '':
+        file.save(fayl_path)
+        xodim['photo'] = f"/uploads/{fayl_nomi}"
 
     hozir = datetime.now(UZB_TZ)
     soat, minut = hozir.hour, hozir.minute
     hafta_kuni = hozir.weekday() 
     vaqt_str = hozir.strftime("%H:%M:%S")
     
+    chat_ids_to_send = list(ADMIN_CHAT_IDS)
+    if xodim.get('telegram_id') and str(xodim['telegram_id']) != "nan":
+        chat_ids_to_send.append(str(xodim['telegram_id']))
+
     if action == 'KIRISH':
-        davomatni_saqlash(xodim, "KIRISH", vaqt_str, holat_str="Hududda")
-        telegramga_rasmli_xabar_yuborish(fayl_path, f"🟢 <b>Kelish (Kirish) - {bugun}</b>\n👤 <b>{xodim['fame']}</b>\n📋 {xodim['lavozim']}\n⏰ Vaqt: {vaqt_str}\n📍 Hududda (Masofa: {int(masofa)}m)")
+        is_late = (soat > 8) or (soat == 8 and minut > 35)
+        holat_matn = "Kechikdi ⚠️" if is_late else "Hududda"
+        
+        davomatni_saqlash(xodim, "KIRISH", vaqt_str, holat_str=holat_matn)
+        
+        if is_late:
+            matn_xabar = f"🟠 <b>Kechikib Kelish - {bugun}</b>\n👤 <b>{xodim['fame']}</b>\n📋 {xodim['lavozim']}\n⏰ Vaqt: {vaqt_str} (Kechikdi)\n📍 Hududda (Masofa: {int(masofa)}m)"
+            telegramga_rasmli_xabar_yuborish(fayl_path, matn_xabar, target_chat_ids=chat_ids_to_send)
+        else:
+            matn_xabar = f"🟢 <b>Kelish (Kirish) - {bugun}</b>\n👤 <b>{xodim['fame']}</b>\n📋 {xodim['lavozim']}\n⏰ Vaqt: {vaqt_str}\n📍 Hududda (Masofa: {int(masofa)}m)"
+            telegramga_rasmli_xabar_yuborish(fayl_path, matn_xabar, target_chat_ids=chat_ids_to_send)
 
     elif action == 'CHIQISH':
         if hafta_kuni == 5:
-            if (soat < 13) or (soat == 13 and minut < 0):
+            if soat < 13:
                 return "<h2 style='color:red;text-align:center;margin-top:50px;'>❌ Shanba kuni 13:00 dan oldin chiqib bo'lmaydi! <a href='/'>Qaytish</a></h2>"
         else:
             if (soat < 15) or (soat == 15 and minut < 50):
                 return "<h2 style='color:red;text-align:center;margin-top:50px;'>❌ Hali ketish vaqti emas! 15:50 dan oldin chiqib bo'lmaydi. <a href='/'>Qaytish</a></h2>"
                 
         davomatni_saqlash(xodim, "CHIQISH", vaqt_str, holat_str="Ketib qoldi")
-        telegramga_rasmli_xabar_yuborish(fayl_path, f"🔴 <b>Ketish (Chiqish) - {bugun}</b>\n👤 <b>{xodim['fame']}</b>\n📋 {xodim['lavozim']}\n⏰ Vaqt: {vaqt_str}\n📍 Hududda (Masofa: {int(masofa)}m)")
+        matn_xabar = f"🔴 <b>Ketish (Chiqish) - {bugun}</b>\n👤 <b>{xodim['fame']}</b>\n📋 {xodim['lavozim']}\n⏰ Vaqt: {vaqt_str}\n📍 Hududda (Masofa: {int(masofa)}m)"
+        telegramga_rasmli_xabar_yuborish(fayl_path, matn_xabar, target_chat_ids=chat_ids_to_send)
 
     return render_template_string('''
     <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><title>Natija</title>
@@ -440,7 +494,7 @@ def result():
         <img src="{{ xodim.photo }}" class="profile-img">
         <h3>{{ xodim.fame }}</h3><p style="color:#94a3b8;">{{ xodim.lavozim }}</p>
         <p style="color:#38bdf8;font-weight:bold;">Vaqt: {{ vaqt_str }}</p>
-       <p style="color:#22c55e;font-weight:bold;margin:15px 0;">Bugungi davomat muvaffaqiyatli qayd etildi!</p>
+        <p style="color:#22c55e;font-weight:bold;margin:15px 0;">Bugungi davomat muvaffaqiyatli qayd etildi!</p>
         <a href="/" style="display:inline-block;padding:10px 20px;background:#38bdf8;color:#0f172a;font-weight:bold;border-radius:8px;text-decoration:none;">Bosh sahifa</a>
     </div>
 
