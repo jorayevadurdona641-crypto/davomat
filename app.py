@@ -11,7 +11,6 @@ from PIL import Image
 app = Flask(__name__)
 app.secret_key = "yakkabog_davomat_maxfiy_kalit"
 
-# --- TELEGRAM BOT VA ADMINLAR SOZLAMASI ---
 TELEGRAM_BOT_TOKEN = "8665708174:AAF9WFb0j0No6XBPXeeZM21vxKgq4Zeux04"
 ADMIN_CHAT_IDS = ["1179846016", "1838498079", "1611805500", "727029645"]
 
@@ -23,7 +22,6 @@ if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
 UZB_TZ = ZoneInfo("Asia/Tashkent")
 
 def rasmni_optimallashtirish(fayl_path):
@@ -60,7 +58,6 @@ def xodimlarni_yuklash():
                         bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
                         bugungi_rasm = f"xodim_{xodim_id}_{bugun}.jpg"
                         rasm_path = os.path.join(UPLOAD_FOLDER, bugungi_rasm)
-                        
                         photo_url = f"/uploads/{bugungi_rasm}" if os.path.exists(rasm_path) else ""
                         
                         xodimlar_royxati.append({
