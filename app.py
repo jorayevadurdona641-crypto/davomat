@@ -111,29 +111,33 @@ def davomatni_saqlash(xodim, amal, vaqt, holat_str="Hududda"):
             
     df.to_excel(EXCEL_HISOBOT, index=False)
 
-def telegramga_rasmli_xabar_yuborish(photo_path, matn, target_chat_ids=ADMIN_CHAT_IDS):
+def telegramga_rasmli_xabar_yuborish(photo_path, matn, target_chat_ids):
     for chat_id in target_chat_ids:
+        if not chat_id or str(chat_id).strip() == "nan":
+            continue
         try:
             url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
             if photo_path and os.path.exists(photo_path):
                 with open(photo_path, 'rb') as photo:
-                    data = {"chat_id": chat_id, "caption": matn, "parse_mode": "HTML"}
+                    data = {"chat_id": str(chat_id).strip(), "caption": matn, "parse_mode": "HTML"}
                     requests.post(url, data=data, files={"photo": photo})
             else:
-                requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", data={"chat_id": chat_id, "text": matn, "parse_mode": "HTML"})
+                requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", data={"chat_id": str(chat_id).strip(), "text": matn, "parse_mode": "HTML"})
         except Exception as e:
             print("Xatolik:", e)
 
 def telegramga_xabar_yuborish(chat_id, matn):
+    if not chat_id or str(chat_id).strip() == "nan":
+        return
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        requests.post(url, data={"chat_id": chat_id, "text": matn, "parse_mode": "HTML"})
+        requests.post(url, data={"chat_id": str(chat_id).strip(), "text": matn, "parse_mode": "HTML"})
     except Exception as e:
         print("Xatolik:", e)
 
 TEHNIKUM_LAT = 38.970790
 TEHNIKUM_LON = 66.706597
-MAX_MASOFA = 500  
+MAX_MASOFA = 400  
 
 def hisobla_masofa(lat1, lon1, lat2, lon2):
     R = 6371000  
@@ -167,7 +171,9 @@ def check_location():
         matn_admin = f"🚨 <b>DIQQAT! XODIM HUDUDDAN CHIQIB KETDI!</b>\n\n👤 <b>{xodim['fame']}</b>\n📋 {xodim['lavozim']}\n📏 Masofa: <b>{int(masofa)} metr</b> uzoqlashdi!\n⏰ Vaqt: {hozir_vaqt}"
         fayl_nomi = f"xodim_{xodim['id']}_{bugun}.jpg"
         fayl_path = os.path.join(UPLOAD_FOLDER, fayl_nomi)
-        telegramga_rasmli_xabar_yuborish(fayl_path, matn_admin)
+        
+        target_ids = list(ADMIN_CHAT_IDS)
+        telegramga_rasmli_xabar_yuborish(fayl_path, matn_admin, target_chat_ids=target_ids)
         
         if xodim.get('telegram_id') and str(xodim['telegram_id']) != "nan":
             matn_xodim = f"⚠️ <b>DIQQAT! Siz texnikum hududidan uzoqlashyapsiz!</b>\n\n📏 Siz belgilangan hududdan <b>{int(masofa)} metr</b> uzoqdasiz.\n⏰ Vaqt: {hozir_vaqt}\n\nIltimos, hududga qayting!"
@@ -446,7 +452,7 @@ def result():
     
     masofa = hisobla_masofa(lat, lon, TEHNIKUM_LAT, TEHNIKUM_LON)
     if masofa > MAX_MASOFA:
-        return f"<h2 style='color:red;text-align:center;margin-top:50px;'>❌ Masofa xatosi! Siz texnikumdan {int(masofa)} metr uzoqdasiz. Davomat faqat texnikum hududida (500m ichida) amalga oshiriladi. <a href='/'>Qaytish</a></h2>"
+        return f"<h2 style='color:red;text-align:center;margin-top:50px;'>❌ Masofa xatosi! Siz texnikumdan {int(masofa)} metr uzoqdasiz. Davomat faqat texnikum hududida (400m ichida) amalga oshiriladi. <a href='/'>Qaytish</a></h2>"
 
     bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
     fayl_nomi = f"xodim_{xodim['id']}_{bugun}.jpg"
@@ -463,9 +469,9 @@ def result():
     hafta_kuni = hozir.weekday() 
     vaqt_str = hozir.strftime("%H:%M:%S")
     
-    chat_ids_to_send = list(ADMIN_CHAT_IDS)
+    target_chat_ids = list(ADMIN_CHAT_IDS)
     if xodim.get('telegram_id') and str(xodim['telegram_id']) != "nan":
-        chat_ids_to_send.append(str(xodim['telegram_id']))
+        target_chat_ids.append(str(xodim['telegram_id']))
 
     if action == 'KIRISH':
         is_late = (soat > 8) or (soat == 8 and minut > 35)
@@ -475,10 +481,10 @@ def result():
         
         if is_late:
             matn_xabar = f"🟠 <b>Kechikib Kelish - {bugun}</b>\n👤 <b>{xodim['fame']}</b>\n📋 {xodim['lavozim']}\n⏰ Vaqt: {vaqt_str} (Kechikdi)\n📍 Hududda (Masofa: {int(masofa)}m)"
-            telegramga_rasmli_xabar_yuborish(fayl_path, matn_xabar, target_chat_ids=chat_ids_to_send)
+            telegramga_rasmli_xabar_yuborish(fayl_path, matn_xabar, target_chat_ids=target_chat_ids)
         else:
             matn_xabar = f"🟢 <b>Kelish (Kirish) - {bugun}</b>\n👤 <b>{xodim['fame']}</b>\n📋 {xodim['lavozim']}\n⏰ Vaqt: {vaqt_str}\n📍 Hududda (Masofa: {int(masofa)}m)"
-            telegramga_rasmli_xabar_yuborish(fayl_path, matn_xabar, target_chat_ids=chat_ids_to_send)
+            telegramga_rasmli_xabar_yuborish(fayl_path, matn_xabar, target_chat_ids=target_chat_ids)
 
     elif action == 'CHIQISH':
         if hafta_kuni == 5:
@@ -490,20 +496,33 @@ def result():
                 
         davomatni_saqlash(xodim, "CHIQISH", vaqt_str, holat_str="Ketib qoldi")
         matn_xabar = f"🔴 <b>Ketish (Chiqish) - {bugun}</b>\n👤 <b>{xodim['fame']}</b>\n📋 {xodim['lavozim']}\n⏰ Vaqt: {vaqt_str}\n📍 Hududda (Masofa: {int(masofa)}m)"
-        telegramga_rasmli_xabar_yuborish(fayl_path, matn_xabar, target_chat_ids=chat_ids_to_send)
+        telegramga_rasmli_xabar_yuborish(fayl_path, matn_xabar, target_chat_ids=target_chat_ids)
 
     return render_template_string('''
-    <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><title>Natija</title>
-    <style>body{font-family:sans-serif;background:#0f172a;color:#fff;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;}
-    .card{background:#1e293b;padding:30px;border-radius:16px;text-align:center;width:400px;box-sizing:border-box;box-shadow: 0 10px 25px rgba(0,0,0,0.4);}
-    .profile-img{width:120px;height:120px;border-radius:50%;object-fit:cover;border:4px solid #38bdf8;margin-bottom:15px;}</style></head>
+    <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Natija</title>
+    <style>
+        body{font-family:'Segoe UI',sans-serif;background:#0f172a;color:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;}
+        .card{background:#1e293b;padding:40px 30px;border-radius:24px;text-align:center;width:100%;max-width:460px;box-sizing:border-box;box-shadow: 0 20px 40px rgba(0,0,0,0.6);}
+        .profile-img{width:160px;height:160px;border-radius:50%;object-fit:cover;border:5px solid #38bdf8;margin-bottom:20px;}
+        h2{color:#22c55e;font-size:30px;margin-top:0;margin-bottom:15px;}
+        h3{font-size:24px;margin:10px 0 5px 0;color:#f8fafc;}
+        p{font-size:18px;color:#94a3b8;margin:5px 0;}
+        .time-box{background:#0f172a;padding:16px;border-radius:12px;margin:25px 0;font-size:22px;color:#38bdf8;font-weight:bold;border:2px solid #334155;}
+        .btn{display:block;width:100%;padding:16px;background:#38bdf8;color:#0f172a;font-weight:bold;font-size:18px;border-radius:12px;text-decoration:none;box-sizing:border-box;}
+    </style></head>
     <body><div class="card">
-        <h2 style="color:#22c55e;">Muvaffaqiyatli!</h2>
-        <img src="{{ xodim.photo }}" class="profile-img">
-        <h3>{{ xodim.fame }}</h3><p style="color:#94a3b8;">{{ xodim.lavozim }}</p>
-        <p style="color:#38bdf8;font-weight:bold;">Vaqt: {{ vaqt_str }}</p>
-        <p style="color:#22c55e;font-weight:bold;margin:15px 0;">Bugungi davomat muvaffaqiyatli qayd etildi!</p>
-        <a href="/" style="display:inline-block;padding:10px 20px;background:#38bdf8;color:#0f172a;font-weight:bold;border-radius:8px;text-decoration:none;">Bosh sahifa</a>
+        <h2>✅ Tasdiqlandi!</h2>
+        <img src="{{ xodim.photo }}" class="profile-img" alt="Xodim rasmi">
+        <h3>{{ xodim.fame }}</h3>
+        <p>{{ xodim.lavozim }}</p>
+        
+        <div class="time-box">
+            ⏰ Vaqt: {{ vaqt_str }}
+        </div>
+        
+        <p style="color:#22c55e;font-weight:bold;font-size:18px;margin-bottom:30px;">Davomatingiz muvaffaqiyatli qayd etildi va botga yuborildi!</p>
+        
+        <a href="/" class="btn">Bosh sahifaga qaytish</a>
     </div>
 
     <script>
