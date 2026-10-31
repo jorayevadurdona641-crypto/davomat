@@ -6,7 +6,6 @@ import math
 import requests
 import os
 import pandas as pd
-from PIL import Image
 
 app = Flask(__name__)
 app.secret_key = "yakkabog_davomat_maxfiy_kalit"
@@ -23,15 +22,6 @@ if not os.path.exists(UPLOAD_FOLDER):
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 UZB_TZ = ZoneInfo("Asia/Tashkent")
-
-def rasmni_optimallashtirish(fayl_path):
-    try:
-        with Image.open(fayl_path) as img:
-            img = img.convert('RGB')
-            img.thumbnail((1024, 1024))
-            img.save(fayl_path, "JPEG", quality=85)
-    except Exception as e:
-        print("Rasmni qayta ishlashda xatolik:", e)
 
 def xodimlarni_yuklash():
     if os.path.exists(XODIMLAR_FAYLI):
@@ -461,7 +451,6 @@ def result():
     file = request.files.get('emp_photo')
     if file and file.filename != '':
         file.save(fayl_path)
-        rasmni_optimallashtirish(fayl_path)
         xodim['photo'] = f"/uploads/{fayl_nomi}"
 
     hozir = datetime.now(UZB_TZ)
