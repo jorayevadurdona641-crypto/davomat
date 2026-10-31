@@ -1,5 +1,6 @@
-   Flask
-   pandas
-   requests
-   openpyxl
-   gunicorn
+  Flask3.1.0
+pandas2.2.3
+openpyxl3.1.5
+requests2.32.3
+Pillow11.0.0
+gunicorn23.0.0 
