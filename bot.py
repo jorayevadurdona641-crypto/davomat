@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import math
+import csv
 from datetime import datetime
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
@@ -11,7 +12,7 @@ from aiogram.fsm.context import FSMContext
 import openpyxl
 
 # --- SOZLAMALAR ---
-API_TOKEN = '8665708174:AAF9WFb0j0...'  # Bot tokeningizni yozing
+API_TOKEN = '8665708174:AAF9WFb0j0No6XBPXeeZM21vxKgq4Zeux04'  # Bot tokeningiz
 
 # 4 ta adminning Telegram ID raqamlari
 ADMIN_IDS = [1179846016, 1838498079, 1611805500, 727029645]
