@@ -19,12 +19,15 @@ ADMIN_IDS = [1179846016, 1838498079, 1611805500, 727029645]
 # Texnikumning GPS koordinatalari (Yakkabog' uchun)
 COLLEGE_LAT = 38.9333
 COLLEGE_LON = 66.8167
-MAX_DISTANCE_METERS = 300  # Ruxsat etilgan radius (metrda)
+
+# Masofa sozlamalari
+CHECKIN_DISTANCE = 150   # Davomatdan o'tish uchun ruxsat etilgan radius (150 metr)
+LEAVE_DISTANCE = 400     # Hududdan chiqib ketganda xabar berish masofasi (400 metr)
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-EXCEL_DB = "Umumiy ma'lumot.xlsx"  # Rasmda ko'rsatilgan Excel fayl nomi
+EXCEL_DB = "Umumiy ma'lumot.xlsx"
 LOG_FILE = "attendance_log.csv"
 EXCEL_REPORT = "xodimlar_hisoboti.xlsx"
 
@@ -36,36 +39,29 @@ class AttendanceState(StatesGroup):
     waiting_for_photo = State()
     waiting_for_leave = State()
 
-# Excel fayldan PNFL (JSHR) bo'yicha qidirish va farrosh/qorovullarni o'tkazib yuborish
+# Excel fayldan PNFL (JSHR) bo'yicha qidirish va farrosh/qorovullarni chetlab o'tish
 def get_teacher_from_excel(jshr: str):
     if not os.path.exists(EXCEL_DB):
         logging.error(f"{EXCEL_DB} fayli topilmadi!")
-        return None
+        return None, None
     try:
         wb = openpyxl.load_workbook(EXCEL_DB, data_only=True)
         ws = wb.active  # 1-sahifa
         
-        # 4-qatordan boshlab o'qiymiz (chunki 1, 2, 3-qatorlarda sarlavhalar bor)
         for row in ws.iter_rows(min_row=4, values_only=True):
             if row and len(row) >= 5:
-                # Rasmga ko'ra ustunlar:
-                # row[1] (B ustuni) -> Ism sharifi
-                # row[2] (C ustuni) -> Lavozimi
-                # row[4] (E ustuni) -> PNFL (JSHR)
-                
                 row_name = str(row[1]).strip() if row[1] is not None else ""
-                row_position = str(row[2]).strip().lower() if row[2] is not None else ""
+                row_position = str(row[2]).strip() if row[2] is not None else ""
                 row_pnfl = str(row[4]).strip() if row[4] is not None else ""
                 
-                # Agar JSHR mos kelsa
                 if row_pnfl == str(jshr).strip():
-                    # Farrosh yoki qorovullarni tekshirib tashlab yuboramiz
-                    if "farrosh" in row_position or "qorovul" in row_position:
-                        return "EXCLUDED"  # Farrosh yoki qorovul bo'lsa
-                    return row_name
+                    pos_lower = row_position.lower()
+                    if "farrosh" in pos_lower or "qorovul" in pos_lower:
+                        return "EXCLUDED", "EXCLUDED"
+                    return row_name, row_position
     except Exception as e:
         logging.error(f"Excel faylni o'qishda xatolik: {e}")
-    return None
+    return None, None
 
 def calculate_distance(lat1, lon1, lat2, lon2):
     R = 6371000
@@ -77,7 +73,6 @@ def calculate_distance(lat1, lon1, lat2, lon2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
 
-# Ishga kelish vaqtini tekshirish (Chegara: 08:30)
 def check_arrival_status():
     now = datetime.now()
     limit_time = now.replace(hour=8, minute=30, second=0, microsecond=0)
@@ -94,22 +89,22 @@ async def cmd_start(message: Message, state: FSMContext):
 @dp.message(AttendanceState.waiting_for_jshr, F.text)
 async def process_jshr(message: Message, state: FSMContext):
     jshr = message.text.strip()
-    result = get_teacher_from_excel(jshr)  # Excel fayldan tekshirish
+    teacher_name, position = get_teacher_from_excel(jshr)
     
-    if result == "EXCLUDED":
+    if teacher_name == "EXCLUDED":
         await message.answer("❌ Kechirasiz, ushbu tizim orqali davomat qayd etish qoidalariga ko'ra sizning lavozimingiz kiritilmagan.")
         await state.clear()
-    elif result:
-        await state.update_data(jshr=jshr, teacher_name=result)
+    elif teacher_name:
+        await state.update_data(jshr=jshr, teacher_name=teacher_name, position=position)
         kb = ReplyKeyboardMarkup(
             keyboard=[[KeyboardButton(text="📍 Geolokatsiyani yuborish", request_location=True)]],
             resize_keyboard=True,
             one_time_keyboard=True
         )
         await state.set_state(AttendanceState.waiting_for_location)
-        await message.answer(f"Salom, **{result}**! Lokatsiyangizni yuboring:", reply_markup=kb, parse_mode="Markdown")
+        await message.answer(f"Salom, **{teacher_name}** ({position})! Lokatsiyangizni yuboring:", reply_markup=kb, parse_mode="Markdown")
     else:
-        await message.answer("Bunday PNFL (JSHR) 'Umumiy ma'lumot.xlsx' faylidan topilmadi. Qaytadan kiriting:")
+        await message.answer("Bunday PNFL (JSHR) bazadan topilmadi. Qaytadan kiriting:")
 
 @dp.message(AttendanceState.waiting_for_location, F.location)
 async def process_location(message: Message, state: FSMContext):
@@ -122,8 +117,9 @@ async def process_location(message: Message, state: FSMContext):
     
     distance = calculate_distance(COLLEGE_LAT, COLLEGE_LON, user_lat, user_lon)
     
-    if distance > MAX_DISTANCE_METERS:
-        await message.answer(f"❌ Xatolik! Texnikum hududidan uzoqdasiz ({int(distance)} metr).")
+    # Davomatdan o'tish uchun 150 metr chegara
+    if distance > CHECKIN_DISTANCE:
+        await message.answer(f"❌ Xatolik! Texnikum hududidan uzoqdasiz ({int(distance)} metr). Davomat uchun {CHECKIN_DISTANCE} metr ichida bo'lishingiz kerak.")
         await state.clear()
         return
     
@@ -136,6 +132,7 @@ async def process_photo(message: Message, state: FSMContext):
     data = await state.get_data()
     jshr = data.get("jshr")
     teacher_name = data.get("teacher_name")
+    position = data.get("position")
     
     now = datetime.now()
     date_str = now.strftime("%Y-%m-%d")
@@ -144,13 +141,14 @@ async def process_photo(message: Message, state: FSMContext):
     
     with open(LOG_FILE, mode="a", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow([jshr, teacher_name, date_str, time_str, status, "Keldi"])
+        writer.writerow([jshr, teacher_name, position, date_str, time_str, status, "Keldi"])
         
     await state.clear()
     
     caption_text = (
         f"🔔 **Davomat qayd etildi!**\n\n"
         f"👤 F.I.Sh: {teacher_name}\n"
+        f"📋 Lavozim: {position}\n"
         f"⏰ Vaqt: {time_str}\n"
         f"📊 Holati: **{status}**"
     )
@@ -160,10 +158,8 @@ async def process_photo(message: Message, state: FSMContext):
     else:
         await message.answer(f"Rahmat, {teacher_name}! Kelgan vaqtingiz qayd etildi ✅")
         
-    # Xodimning o'ziga rasm va xabar yuborish
     await bot.send_photo(chat_id=message.from_user.id, photo=photo_file_id, caption=caption_text, parse_mode="Markdown")
     
-    # 4 ta adminga rasm va xabar yuborish
     for admin_id in ADMIN_IDS:
         try:
             await bot.send_photo(chat_id=admin_id, photo=photo_file_id, caption=caption_text, parse_mode="Markdown")
@@ -178,9 +174,10 @@ async def cmd_leave(message: Message, state: FSMContext):
 @dp.message(AttendanceState.waiting_for_leave, F.text)
 async def process_leave(message: Message, state: FSMContext):
     text = message.text.strip()
-    teacher_name = get_teacher_from_excel(text)
+    teacher_name, position = get_teacher_from_excel(text)
     if not teacher_name or teacher_name == "EXCLUDED":
         teacher_name = "Noma'lum xodim"
+        position = "Noma'lum"
         
     now = datetime.now()
     time_str = now.strftime("%H:%M")
@@ -193,6 +190,7 @@ async def process_leave(message: Message, state: FSMContext):
         admin_alert = (
             f"🚨 **ERTA KETISH HARAKATI!**\n\n"
             f"👤 Xodim: **{teacher_name}**\n"
+            f"📋 Lavozim: {position}\n"
             f"⏰ Vaqt: {time_str}\n"
             f"⚠️ Xodim 16:00 gacha bo'lgan vaqtda binoni tark etmoqchi!"
         )
@@ -209,13 +207,13 @@ async def cmd_hisobot(message: Message):
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Davomat"
-    ws.append(["PNFL", "F.I.Sh.", "Sana", "Vaqt", "Holati"])
+    ws.append(["PNFL", "F.I.Sh.", "Lavozim", "Sana", "Vaqt", "Holati"])
     if os.path.exists(LOG_FILE):
         with open(LOG_FILE, mode="r", encoding="utf-8") as f:
             reader = csv.reader(f)
             next(reader, None)
             for row in reader:
-                ws.append(row[:5])
+                ws.append(row[:6])
     wb.save(EXCEL_REPORT)
     file = FSInputFile(EXCEL_REPORT)
     await message.answer_document(document=file, caption="📊 **Xodimlarning davomat hisoboti**", parse_mode="Markdown")
