@@ -120,8 +120,8 @@ def telegramga_xabar_yuborish(chat_id, matn):
 
 TEHNIKUM_LAT = 38.970790
 TEHNIKUM_LON = 66.706597
-DAVOMAT_MAX_MASOFA = 400    # Davomat qilish uchun ruxsat etilgan radius
-CHIQISH_XABAR_MASOFA = 150  # 150 metrdan uzoqlashsa ogohlantirish berish
+DAVOMAT_MAX_MASOFA = 150    # Davomat uchun 150 metr
+CHIQISH_XABAR_MASOFA = 400  # 400 metrdan chiqsa ogohlantirish
 
 def hisobla_masofa(lat1, lon1, lat2, lon2):
     R = 6371000  
@@ -146,14 +146,13 @@ def check_location():
         
     masofa = hisobla_masofa(lat, lon, TEHNIKUM_LAT, TEHNIKUM_LON)
     
-    # Agar 150 metrdan uzoqlashsa
     if masofa > CHIQISH_XABAR_MASOFA:
         bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
         hozir_vaqt = datetime.now(UZB_TZ).strftime("%H:%M:%S")
         
-        davomatni_saqlash(xodim, "KIRISH", hozir_vaqt, holat_str=f"⚠️ 150m dan chiqdi ({int(masofa)}m)")
+        davomatni_saqlash(xodim, "KIRISH", hozir_vaqt, holat_str=f"⚠️ 400m dan chiqdi ({int(masofa)}m)")
         
-        matn_admin = f"🚨 <b>DIQQAT! XODIM 150 METRDAN UZOQLASHDI!</b>\n\n👤 <b>F.I.O:</b> {xodim['fame']}\n📋 <b>Lavozimi:</b> {xodim['lavozim']}\n📏 Masofa: <b>{int(masofa)} metr</b> uzoqda!\n⏰ Vaqt: {hozir_vaqt}"
+        matn_admin = f"🚨 <b>DIQQAT! XODIM 400 METRDAN UZOQLASHDI!</b>\n\n👤 <b>F.I.O:</b> {xodim['fame']}\n📋 <b>Lavozimi:</b> {xodim['lavozim']}\n📏 Masofa: <b>{int(masofa)} metr</b> uzoqda!\n⏰ Vaqt: {hozir_vaqt}"
         fayl_nomi = f"xodim_{xodim['id']}_{bugun}.jpg"
         fayl_path = os.path.join(UPLOAD_FOLDER, fayl_nomi)
         
@@ -161,7 +160,7 @@ def check_location():
         telegramga_rasmli_xabar_yuborish(fayl_path, matn_admin, target_chat_ids=target_ids)
         
         if xodim.get('telegram_id') and str(xodim['telegram_id']) != "nan":
-            matn_xodim = f"⚠️ <b>DIQQAT! Siz texnikum hududidan uzoqlashyapsiz!</b>\n\n👤 {xodim['fame']}\n📏 Masofa: <b>{int(masofa)} metr</b>\n⏰ Vaqt: {hozir_vaqt}\n\nIltimos, hududga (150m ichiga) qayting!"
+            matn_xodim = f"⚠️ <b>DIQQAT! Siz texnikum hududidan uzoqlashyapsiz!</b>\n\n👤 {xodim['fame']}\n📏 Masofa: <b>{int(masofa)} metr</b>\n⏰ Vaqt: {hozir_vaqt}\n\nIltimos, hududga (400m ichiga) qayting!"
             telegramga_xabar_yuborish(str(xodim['telegram_id']), matn_xodim)
         
         return {"status": "out_of_bounds", "masofa": int(masofa)}
@@ -249,7 +248,7 @@ def admin_panel():
                 <td>{{ row['Kelish_Vaqti'] }}</td>
                 <td>{{ row['Ketish_Vaqti'] }}</td>
                 <td>
-                    {% if '150m' in row['Oxirgi_Holat'] or 'uzoqla' in row['Oxirgi_Holat'] %}
+                    {% if '400m' in row['Oxirgi_Holat'] or 'uzoqla' in row['Oxirgi_Holat'] %}
                         <span class="badge-ogoh">{{ row['Oxirgi_Holat'] }}</span>
                     {% elif 'Kechikdi' in row['Oxirgi_Holat'] %}
                         <span class="badge-kechikdi">{{ row['Oxirgi_Holat'] }}</span>
@@ -348,7 +347,7 @@ def select_employee():
             </select>
             
             <div class="upload-box">
-                <label style="font-size: 13px; color: #38bdf8; display:block; margin-bottom:5px;">📸 Har safar yuzingizni rasmga tushing (Selfie):</label>
+                <label style="font-size: 13px; color: #38bdf8; display:block; margin-bottom:5px;">📸 Jonli rasmga tushish (Selfie):</label>
                 <input type="file" name="emp_photo" id="empPhotoInput" accept="image/*" capture="user" required style="font-size: 12px; color: #fff; width:100%;">
             </div>
 
@@ -414,10 +413,9 @@ def result():
     xodim = next((x for x in XODIMLAR if str(x['id']) == str(xodim_id)), None)
     if not xodim: return "Xodim topilmadi!"
     
-    # Davomat uchun 400 metr tekshiruvi
     masofa = hisobla_masofa(lat, lon, TEHNIKUM_LAT, TEHNIKUM_LON)
     if masofa > DAVOMAT_MAX_MASOFA:
-        return f"<h2 style='color:red;text-align:center;margin-top:50px;'>❌ Masofa xatosi! Siz texnikumdan {int(masofa)} metr uzoqdasiz. Davomat faqat texnikum hududida (400m ichida) amalga oshiriladi. <a href='/'>Qaytish</a></h2>"
+        return f"<h2 style='color:red;text-align:center;margin-top:50px;'>❌ Masofa xatosi! Siz texnikumdan {int(masofa)} metr uzoqdasiz. Davomat faqat texnikum hududida (150m ichida) amalga oshiriladi. <a href='/'>Qaytish</a></h2>"
 
     bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
     fayl_nomi = f"xodim_{xodim['id']}_{bugun}_{datetime.now(UZB_TZ).strftime('%H%M%S')}.jpg"
@@ -436,8 +434,8 @@ def result():
     vaqt_str = hozir.strftime("%H:%M:%S")
     
     target_chat_ids = list(ADMIN_CHAT_IDS)
-    if xodim.get('telegram_id') and str(xodim['telegram_id']) != "nan":
-        target_chat_ids.append(str(xodim['telegram_id']))
+    if xodim.get('telegram_id') and str(xodim['telegram_id']).strip() != "nan" and str(xodim['telegram_id']).strip() != "":
+        target_chat_ids.append(str(xodim['telegram_id']).strip())
 
     if action == 'KIRISH':
         is_late = (soat > 8) or (soat == 8 and minut > 35)
@@ -505,7 +503,7 @@ def result():
                         })
                     }).then(res => res.json()).then(data => {
                         if (data.status === 'out_of_bounds') {
-                            console.log("Diqqat! 150m dan chiqib ketildi: " + data.masofa + "m");
+                            console.log("Diqqat! 400m dan chiqib ketildi: " + data.masofa + "m");
                         }
                     });
                 }, err => { console.log("GPS kuzatuv xatosi"); }, { enableHighAccuracy: true });
