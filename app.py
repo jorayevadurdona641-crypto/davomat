@@ -5,15 +5,28 @@ import math
 import requests
 import os
 import pandas as pd
+import threading
+import asyncio
+import csv
+from aiogram import Bot, Dispatcher, F
+from aiogram.filters import Command
+from aiogram.types import Message, FSInputFile, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.fsm.state import StatesGroup, State
+from aiogram.fsm.context import FSMContext
+import openpyxl
 
 app = Flask(__name__)
 app.secret_key = "yakkabog_davomat_maxfiy_kalit"
 
+# --- TELEGRAM BOT VA WEB UMUMIY SOZLAMALARI ---
 TELEGRAM_BOT_TOKEN = "8665708174:AAF9WFb0j0No6XBPXeeZM21vxKgq4Zeux04"
 ADMIN_CHAT_IDS = ["1179846016", "1838498079", "1611805500", "727029645"]
+ADMIN_IDS_INT = [1179846016, 1838498079, 1611805500, 727029645]
 
 EXCEL_HISOBOT = "davomat_hisobot.xlsx"
 XODIMLAR_FAYLI = "Umumiy maʼlumot.xlsx"
+LOG_FILE = "attendance_log.csv"
+EXCEL_REPORT = "xodimlar_hisoboti.xlsx"
 UPLOAD_FOLDER = "uploads"
 
 if not os.path.exists(UPLOAD_FOLDER):
@@ -21,6 +34,11 @@ if not os.path.exists(UPLOAD_FOLDER):
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 UZB_TZ = ZoneInfo("Asia/Tashkent")
+
+TEHNIKUM_LAT = 38.970790
+TEHNIKUM_LON = 66.706597
+DAVOMAT_MAX_MASOFA = 150    # Davomat uchun 150 metr
+CHIQISH_XABAR_MASOFA = 400  # 400 metrdan chiqsa ogohlantirish
 
 def xodimlarni_yuklash():
     if os.path.exists(XODIMLAR_FAYLI):
@@ -61,6 +79,10 @@ def bazani_tekshir():
     if not os.path.exists(EXCEL_HISOBOT):
         df = pd.DataFrame(columns=["ID", "F.I.O", "Lavozimi", "Sana", "Kelish_Vaqti", "Ketish_Vaqti", "Holat", "Oxirgi_Holat"])
         df.to_excel(EXCEL_HISOBOT, index=False)
+    if not os.path.exists(LOG_FILE):
+        with open(LOG_FILE, mode="w", encoding="utf-8", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["PNFL", "F.I.Sh.", "Lavozim", "Sana", "Vaqt", "Holati", "Oxirgi_Holat"])
 
 bazani_tekshir()
 
@@ -118,11 +140,6 @@ def telegramga_xabar_yuborish(chat_id, matn):
     except Exception as e:
         print("Xatolik:", e)
 
-TEHNIKUM_LAT = 38.970790
-TEHNIKUM_LON = 66.706597
-DAVOMAT_MAX_MASOFA = 150    # Davomat uchun 150 metr
-CHIQISH_XABAR_MASOFA = 400  # 400 metrdan chiqsa ogohlantirish
-
 def hisobla_masofa(lat1, lon1, lat2, lon2):
     R = 6371000  
     dlat = math.radians(lat2 - lat1)
@@ -130,6 +147,7 @@ def hisobla_masofa(lat1, lon1, lat2, lon2):
     a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2)**2
     return R * (2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)))
 
+# --- FLASK ROUTES ---
 @app.route('/api/check-location', methods=['POST'])
 def check_location():
     data = request.get_json()
@@ -513,5 +531,190 @@ def result():
     </body></html>
     ''', xodim=xodim, vaqt_str=vaqt_str)
 
+
+# --- TELEGRAM BOT LOGIKASI (Fonda ishlaydi) ---
+bot_instance = Bot(token=TELEGRAM_BOT_TOKEN)
+dp_instance = Dispatcher()
+
+class AttendanceState(StatesGroup):
+    waiting_for_jshr = State()
+    waiting_for_location = State()
+    waiting_for_photo = State()
+    waiting_for_leave = State()
+
+def get_teacher_from_excel_bot(jshr: str):
+    if not os.path.exists(XODIMLAR_FAYLI):
+        return None, None
+    try:
+        wb = openpyxl.load_workbook(XODIMLAR_FAYLI, data_only=True)
+        ws = wb.active
+        for row in ws.iter_rows(min_row=4, values_only=True):
+            if row and len(row) >= 5:
+                row_name = str(row[1]).strip() if row[1] is not None else ""
+                row_position = str(row[2]).strip() if row[2] is not None else ""
+                row_pnfl = str(row[4]).strip() if row[4] is not None else ""
+                if row_pnfl == str(jshr).strip():
+                    pos_lower = row_position.lower()
+                    if "farrosh" in pos_lower or "qorovul" in pos_lower:
+                        return "EXCLUDED", "EXCLUDED"
+                    return row_name, row_position
+    except Exception as e:
+        print("Excelni botda o'qishda xatolik:", e)
+    return None, None
+
+@dp_instance.message(Command("start"))
+async def cmd_start_bot(message: Message, state: FSMContext):
+    await state.set_state(AttendanceState.waiting_for_jshr)
+    await message.answer("Assalomu alaykum! Davomat botiga xush kelibsiz. PNFL (JSHR) raqamingizni kiriting:")
+
+@dp_instance.message(AttendanceState.waiting_for_jshr, F.text)
+async def process_jshr_bot(message: Message, state: FSMContext):
+    jshr = message.text.strip()
+    teacher_name, position = get_teacher_from_excel_bot(jshr)
+    if teacher_name == "EXCLUDED":
+        await message.answer("❌ Kechirasiz, ushbu tizim orqali davomat qayd etish qoidalariga ko'ra sizning lavozimingiz kiritilmagan.")
+        await state.clear()
+    elif teacher_name:
+        await state.update_data(jshr=jshr, teacher_name=teacher_name, position=position)
+        kb = ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="📍 Geolokatsiyani yuborish", request_location=True)]],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
+        await state.set_state(AttendanceState.waiting_for_location)
+        await message.answer(f"Salom, <b>{teacher_name}</b> ({position})! Lokatsiyangizni yuboring:", reply_markup=kb, parse_mode="HTML")
+    else:
+        await message.answer("Bunday PNFL (JSHR) bazadan topilmadi. Qaytadan kiriting:")
+
+@dp_instance.message(AttendanceState.waiting_for_location, F.location)
+async def process_location_bot(message: Message, state: FSMContext):
+    user_lat = message.location.latitude
+    user_lon = message.location.longitude
+    data = await state.get_data()
+    teacher_name = data.get("teacher_name")
+    
+    distance = hisobla_masofa(user_lat, user_lon, TEHNIKUM_LAT, TEHNIKUM_LON)
+    if distance > DAVOMAT_MAX_MASOFA:
+        await message.answer(f"❌ Xatolik! Texnikum hududidan uzoqdasiz ({int(distance)} metr). Davomat uchun {DAVOMAT_MAX_MASOFA} metr ichida bo'lishingiz kerak.")
+        await state.clear()
+        return
+    
+    await state.set_state(AttendanceState.waiting_for_photo)
+    await message.answer("Lokatsiya tasdiqlandi ✅ Endi davomat uchun o'z <b>rasmingizni</b> yuboring:", reply_markup=None, parse_mode="HTML")
+
+@dp_instance.message(AttendanceState.waiting_for_photo, F.photo)
+async def process_photo_bot(message: Message, state: FSMContext):
+    photo_file_id = message.photo[-1].file_id
+    data = await state.get_data()
+    jshr = data.get("jshr")
+    teacher_name = data.get("teacher_name")
+    position = data.get("position")
+    
+    now = datetime.now(UZB_TZ)
+    date_str = now.strftime("%Y-%m-%d")
+    time_str = now.strftime("%H:%M:%S")
+    soat, minut = now.hour, now.minute
+    is_late = (soat > 8) or (soat == 8 and minut > 35)
+    status = "Kechikib keldi ⚠️" if is_late else "O'z vaqtida keldi ✅"
+    
+    with open(LOG_FILE, mode="a", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([jshr, teacher_name, position, date_str, time_str, status, "Keldi"])
+        
+    await state.clear()
+    
+    caption_text = (
+        f"🟢 <b>KIRISH (Kelish) - {date_str}</b>\n\n"
+        f"👤 <b>F.I.O:</b> {teacher_name}\n"
+        f"📋 <b>Lavozimi:</b> {position}\n"
+        f"⏰ <b>Vaqt:</b> {time_str}\n"
+        f"<b>Holat:</b> {status}"
+    )
+    
+    await message.answer(f"Rahmat, {teacher_name}! Kelgan vaqtingiz muvaffaqiyatli qayd etildi ✅")
+    
+    # Xodimning o'ziga va adminlarga yuborish
+    target_ids = list(ADMIN_IDS_INT)
+    if message.from_user.id not in target_ids:
+        target_ids.append(message.from_user.id)
+        
+    for admin_id in target_ids:
+        try:
+            await bot_instance.send_photo(chat_id=admin_id, photo=photo_file_id, caption=caption_text, parse_mode="HTML")
+        except Exception as e:
+            print("Bot orqali yuborishda xatolik:", e)
+
+@dp_instance.message(Command("ketish"))
+async def cmd_leave_bot(message: Message, state: FSMContext):
+    await state.set_state(AttendanceState.waiting_for_leave)
+    await message.answer("Erta ketish uchun PNFL (JSHR) raqamingizni kiriting:")
+
+@dp_instance.message(AttendanceState.waiting_for_leave, F.text)
+async def process_leave_bot(message: Message, state: FSMContext):
+    text = message.text.strip()
+    teacher_name, position = get_teacher_from_excel_bot(text)
+    if not teacher_name or teacher_name == "EXCLUDED":
+        teacher_name = "Noma'lum xodim"
+        position = "Noma'lum"
+        
+    now = datetime.now(UZB_TZ)
+    time_str = now.strftime("%H:%M:%S")
+    soat, minut = now.hour, now.minute
+    hafta_kuni = now.weekday()
+    
+    await state.clear()
+    
+    is_allowed = True
+    if hafta_kuni == 5:
+        if soat < 13:
+            is_allowed = False
+    else:
+        if (soat < 15) or (soat == 15 and minut < 50):
+            is_allowed = False
+            
+    if not is_allowed:
+        await message.answer("❌ Hali ketish vaqti emas! Belgilangan vaqtdan oldin chiqib bo'lmaydi.")
+        admin_alert = (
+            f"🚨 <b>ERTA KETishga URINISH!</b>\n\n"
+            f"👤 Xodim: <b>{teacher_name}</b>\n"
+            f"📋 Lavozim: {position}\n"
+            f"⏰ Vaqt: {time_str}\n"
+            f"⚠️ Ruxsat etilgan vaqtdan oldin ketishga harakat qilindi!"
+        )
+        for admin_id in ADMIN_IDS_INT:
+            try:
+                await bot_instance.send_message(admin_id, admin_alert, parse_mode="HTML")
+            except Exception as e:
+                print("Adminga xabar berishda xatolik:", e)
+    else:
+        await message.answer("Ish vaqti yakunlandi. Xayrli kun!")
+
+@dp_instance.message(Command("hisobot"))
+async def cmd_hisobot_bot(message: Message):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Davomat"
+    ws.append(["PNFL", "F.I.Sh.", "Lavozim", "Sana", "Vaqt", "Holati", "Oxirgi_Holat"])
+    if os.path.exists(LOG_FILE):
+        with open(LOG_FILE, mode="r", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            next(reader, None)
+            for row in reader:
+                ws.append(row)
+    wb.save(EXCEL_REPORT)
+    file = FSInputFile(EXCEL_REPORT)
+    await message.answer_document(document=file, caption="📊 <b>Xodimlarning davomat hisoboti</b>", parse_mode="HTML")
+
+
+def run_telegram_bot():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(dp_instance.start_polling(bot_instance))
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Telegram botni alohida fondagi oqimda (thread) ishga tushiramiz
+    bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
+    bot_thread.start()
+    
+    # Flask veb-serverini ishga tushiramiz
+    app.run(host='0.0.0.0', port=5000, debug=False)
