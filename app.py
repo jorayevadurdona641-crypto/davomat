@@ -532,7 +532,7 @@ def result():
     ''', xodim=xodim, vaqt_str=vaqt_str)
 
 
-# --- TELEGRAM BOT LOGIKASI (Fonda ishlaydi) ---
+# --- TELEGRAM BOT LOGIKASI ---
 bot_instance = Bot(token=TELEGRAM_BOT_TOKEN)
 dp_instance = Dispatcher()
 
@@ -633,7 +633,6 @@ async def process_photo_bot(message: Message, state: FSMContext):
     
     await message.answer(f"Rahmat, {teacher_name}! Kelgan vaqtingiz muvaffaqiyatli qayd etildi ✅")
     
-    # Xodimning o'ziga va adminlarga yuborish
     target_ids = list(ADMIN_IDS_INT)
     if message.from_user.id not in target_ids:
         target_ids.append(message.from_user.id)
@@ -705,16 +704,15 @@ async def cmd_hisobot_bot(message: Message):
     file = FSInputFile(EXCEL_REPORT)
     await message.answer_document(document=file, caption="📊 <b>Xodimlarning davomat hisoboti</b>", parse_mode="HTML")
 
-
-def run_telegram_bot():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(dp_instance.start_polling(bot_instance))
+# Asosiy ishga tushirish funksiyasi (Bot va Serverni birga yuritadi)
+async def main():
+    await bot_instance.delete_webhook(drop_pending_updates=True)
+    polling_task = asyncio.create_task(dp_instance.start_polling(bot_instance))
+    
+    server_thread = threading.Thread(target=lambda: app.run(host='0.0.0.0', port=5000, debug=False), daemon=True)
+    server_thread.start()
+    
+    await polling_task
 
 if __name__ == '__main__':
-    # Telegram botni alohida fondagi oqimda (thread) ishga tushiramiz
-    bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
-    bot_thread.start()
-    
-    # Flask veb-serverini ishga tushiramiz
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    asyncio.run(main())
