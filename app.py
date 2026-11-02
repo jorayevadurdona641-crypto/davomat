@@ -387,14 +387,15 @@ def verify():
             </form>
         </div>
         <script>
+            // GPS vaqtini 30 sekundgacha uzaytirdik va xona ichida xato bermasligi uchun sozladik
             navigator.geolocation.getCurrentPosition(pos => {
                 document.getElementById('lat').value = pos.coords.latitude;
                 document.getElementById('lon').value = pos.coords.longitude;
                 document.getElementById('geoForm').submit();
             }, err => { 
-                alert("GPS xatosi! Texnikum hududida ekanligingizni tasdiqlash uchun lokatsiyaga ruxsat bering."); 
+                alert("GPS xatosi! Lokatsiyaga ruxsat bering yoki ochiq havoda urinib ko'ring."); 
                 window.location.href='/'; 
-            }, {enableHighAccuracy:true, timeout: 10000});
+            }, {enableHighAccuracy: false, timeout: 30000, maximumAge: 60000});
         </script>
     </body></html>
     ''', action=action, xodim=xodim)
@@ -432,7 +433,6 @@ def result():
     hafta_kuni = hozir.weekday() 
     vaqt_str = hozir.strftime("%H:%M:%S")
     
-    # MUHIM: Xodimning o'ziga ham va adminlarga ham rasmi bilan birga xabar yuborish
     target_chat_ids = list(ADMIN_CHAT_IDS)
     if xodim.get('telegram_id') and str(xodim['telegram_id']).strip() != "nan" and str(xodim['telegram_id']).strip() != "":
         target_chat_ids.append(str(xodim['telegram_id']).strip())
@@ -669,7 +669,6 @@ async def cmd_hisobot_bot(message: Message):
     file = FSInputFile(EXCEL_REPORT)
     await message.answer_document(document=file, caption="📊 <b>Xodimlarning davomat hisoboti</b>", parse_mode="HTML")
 
-# Asosiy ishga tushirish (Polling va Flask server birga)
 if __name__ == '__main__':
     def run_bot():
         loop = asyncio.new_event_loop()
