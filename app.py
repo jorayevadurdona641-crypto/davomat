@@ -38,7 +38,7 @@ UZB_TZ = ZoneInfo("Asia/Tashkent")
 TEHNIKUM_LAT = 38.970790
 TEHNIKUM_LON = 66.706597
 
-DAVOMAT_MAX_MASOFA = 100    # Davomat uchun 100 metr radius
+DAVOMAT_MAX_MASOFA = 100    # 100 metr hudud
 CHIQISH_XABAR_MASOFA = 500  # 500 metrdan chiqsa ogohlantirish
 
 def xodimlarni_yuklash():
@@ -314,11 +314,18 @@ def index():
     </div></body></html>
     ''')
 
+# QR Kod yoki to'g'ridan-to'g'ri ism orqali kirish (QR kod orqali skanerlanganda: /select-employee?action=KIRISH&id=5)
 @app.route('/select-employee')
 def select_employee():
     action = request.args.get('action', 'KIRISH')
+    pre_id = request.args.get('id')
     global XODIMLAR
     XODIMLAR = xodimlarni_yuklash()
+    
+    # Agar QR kod orqali to'g'ridan-to'g'ri ID kelgan bo'lsa
+    if pre_id:
+        return redirect(url_for('verify', action=action, xodim_id=pre_id))
+
     return render_template_string('''
     <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Xodim</title>
     <style>
@@ -376,7 +383,6 @@ def verify():
     xodim = next((x for x in XODIMLAR if str(x['id']) == str(xodim_id)), None)
     if not xodim: return "Xodim topilmadi!"
     
-    # Agar KIRISH qilmoqchi bo'lsa va allaqachon o'tgan bo'lsa
     if action == 'KIRISH' and bugun_kelganmi(xodim['id']):
         return "<h2 style='color:#f97316;text-align:center;margin-top:50px;'>⚠️ Siz bugun allaqachon davomatdan o'tgansiz! Qayta o'tish mumkin emas. <a href='/'>Bosh sahifaga qaytish</a></h2>"
 
@@ -414,7 +420,6 @@ def result():
     xodim = next((x for x in XODIMLAR if str(x['id']) == str(xodim_id)), None)
     if not xodim: return "Xodim topilmadi!"
     
-    # Takroriy davomatning oldini olish (Web orqali)
     if action == 'KIRISH' and bugun_kelganmi(xodim['id']):
         return "<h2 style='color:#f97316;text-align:center;margin-top:50px;'>⚠️ Siz bugun allaqachon davomatdan o'tgansiz! <a href='/'>Bosh sahifaga qaytish</a></h2>"
 
@@ -443,7 +448,6 @@ def result():
         target_chat_ids.append(str(xodim['telegram_id']).strip())
 
     if action == 'KIRISH':
-        # Kechikish chegarasi: 08:30 (08:30 dan o'tsa kechikdi)
         is_late = (soat > 8) or (soat == 8 and minut > 30)
         holat_matn = "Kechikdi ⚠️" if is_late else "Hududda"
         kechikish_statusi = "<b>Holat:</b> Kechikib keldi ⚠️" if is_late else "<b>Holat:</b> O'z vaqtida keldi ✅"
@@ -458,7 +462,6 @@ def result():
             if soat < 13:
                 return "<h2 style='color:red;text-align:center;margin-top:50px;'>❌ Shanba kuni 13:00 dan oldin chiqib bo'lmaydi! <a href='/'>Qaytish</a></h2>"
         else:
-            # Ketish vaqti: 16:00
             if soat < 16:
                 return "<h2 style='color:red;text-align:center;margin-top:50px;'>❌ Hali ketish vaqti emas! 16:00 dan oldin chiqib bo'lmaydi. <a href='/'>Qaytish</a></h2>"
                 
@@ -549,22 +552,12 @@ async def cmd_start_bot(message: Message, state: FSMContext):
 @dp_instance.message(AttendanceState.waiting_for_jshr, F.text)
 async def process_jshr_bot(message: Message, state: FSMContext):
     jshr = message.text.strip()
-    
-    # Bot orqali ham bir martadan ortiq o'tishni taqiqlash
-    teacher_name, position, excel_tg_id = get_teacher_from_excel_bot(jshr)
-    if teacher_name and teacher_name != "EXCLUDED":
-        # ID bo'yicha topamiz
-        xodim_temp = next((x for x in XODIMLAR if str(x.get('pnfl')) == str(jshr)), None)
-        if xodim_temp and bugun_kelganmi(xodim_temp['id']):
-            await message.answer("⚠️ <b>Siz bugun allaqachon davomatdan o'tgansiz!</b> Qayta o'tish mumkin emas.", parse_mode="HTML")
-            await state.clear()
-            return
-
     if bot_bugun_kelganmi(jshr):
         await message.answer("⚠️ <b>Siz bugun allaqachon davomatdan o'tgansiz!</b> Qayta o'tish mumkin emas.", parse_mode="HTML")
         await state.clear()
         return
 
+    teacher_name, position, excel_tg_id = get_teacher_from_excel_bot(jshr)
     if teacher_name == "EXCLUDED":
         await message.answer("❌ Kechirasiz, lavozimingiz kiritilmagan.")
         await state.clear()
@@ -617,11 +610,9 @@ async def process_photo_bot(message: Message, state: FSMContext):
     time_str = now.strftime("%H:%M:%S")
     soat, minut = now.hour, now.minute
     
-    # Kechikish chegarasi: 08:30
     is_late = (soat > 8) or (soat == 8 and minut > 30)
     status = "Kechikib keldi ⚠️" if is_late else "O'z vaqtida keldi ✅"
     
-    # Xodim obyektini topib Excelga yozish
     xodim_temp = next((x for x in XODIMLAR if str(x.get('pnfl')) == str(jshr)), None)
     if xodim_temp:
         davomatni_saqlash(xodim_temp, "KIRISH", time_str, holat_str="Kechikdi ⚠️" if is_late else "Hududda")
@@ -673,7 +664,6 @@ async def process_leave_bot(message: Message, state: FSMContext):
         if soat < 13:
             is_allowed = False
     else:
-        # Ketish vaqti: 16:00
         if soat < 16:
             is_allowed = False
     if not is_allowed:
@@ -685,7 +675,7 @@ async def process_leave_bot(message: Message, state: FSMContext):
 async def cmd_hisobot_bot(message: Message):
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Davomat"
+    ws.title = "Davomat`"
     ws.append(["PNFL", "F.I.Sh.", "Lavozim", "Sana", "Vaqt", "Holati", "Oxirgi_Holat"])
     if os.path.exists(LOG_FILE):
         with open(LOG_FILE, mode="r", encoding="utf-8") as f:
