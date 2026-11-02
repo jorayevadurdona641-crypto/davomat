@@ -37,7 +37,7 @@ UZB_TZ = ZoneInfo("Asia/Tashkent")
 
 TEHNIKUM_LAT = 38.970790
 TEHNIKUM_LON = 66.706597
-DAVOMAT_MAX_MASOFA = 150    # Davomat uchun 150 metr
+DAVOMAT_MAX_MASOFA = 1000   # GPS masofa chegarasi (xona ichida xato bermasligi uchun kengaytirildi)
 CHIQISH_XABAR_MASOFA = 400  # 400 metrdan chiqsa ogohlantirish
 
 def xodimlarni_yuklash():
@@ -45,7 +45,7 @@ def xodimlarni_yuklash():
         try:
             df = pd.read_excel(XODIMLAR_FAYLI, sheet_name=0, skiprows=2)
             xodimlar_royxati = []
-            kerak_emas_sozlar = ["qorovul", "farrosh"]
+            kerak_emas_sozlar = ["qorovul", "farrosh", "soatbay"]
             
             for index, row in df.iterrows():
                 fio = str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else ""
@@ -141,15 +141,6 @@ def telegramga_rasmli_xabar_yuborish(photo_path, matn, target_chat_ids):
                 requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", data={"chat_id": str(chat_id).strip(), "text": matn, "parse_mode": "HTML"})
         except Exception as e:
             print("Xatolik:", e)
-
-def telegramga_xabar_yuborish(chat_id, matn):
-    if not chat_id or str(chat_id).strip() == "nan":
-        return
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        requests.post(url, data={"chat_id": str(chat_id).strip(), "text": matn, "parse_mode": "HTML"})
-    except Exception as e:
-        print("Xatolik:", e)
 
 def hisobla_masofa(lat1, lon1, lat2, lon2):
     R = 6371000  
@@ -405,7 +396,6 @@ def verify():
     xodim = next((x for x in XODIMLAR if str(x['id']) == str(xodim_id)), None)
     if not xodim: return "Xodim topilmadi!"
     
-    # Agar KIRISH qilmoqchi bo'lsa va allaqachon o'tgan bo'lsa
     if action == 'KIRISH' and bugun_kelganmi(xodim['id']):
         return "<h2 style='color:#f97316;text-align:center;margin-top:50px;'>⚠️ Siz bugun allaqachon davomatdan o'tgansiz! <a href='/'>Bosh sahifaga qaytish</a></h2>"
 
@@ -448,7 +438,7 @@ def result():
 
     masofa = hisobla_masofa(lat, lon, TEHNIKUM_LAT, TEHNIKUM_LON)
     if masofa > DAVOMAT_MAX_MASOFA:
-        return f"<h2 style='color:red;text-align:center;margin-top:50px;'>❌ Masofa xatosi! Siz texnikumdan {int(masofa)} metr uzoqdasiz. Davomat faqat texnikum hududida (150m ichida) amalga oshiriladi. <a href='/'>Qaytish</a></h2>"
+        return f"<h2 style='color:red;text-align:center;margin-top:50px;'>❌ Masofa xatosi! Siz texnikumdan {int(masofa)} metr uzoqdasiz. Davomat faqat texnikum hududida amalga oshiriladi. <a href='/'>Qaytish</a></h2>"
 
     bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
     fayl_nomi = f"xodim_{xodim['id']}_{bugun}_{datetime.now(UZB_TZ).strftime('%H%M%S')}.jpg"
@@ -471,7 +461,6 @@ def result():
         target_chat_ids.append(str(xodim['telegram_id']).strip())
 
     if action == 'KIRISH':
-        # Kechikish chegarasi: 08:30
         is_late = (soat > 8) or (soat == 8 and minut > 30)
         holat_matn = "Kechikdi ⚠️" if is_late else "Hududda"
         kechikish_statusi = "<b>Holat:</b> Kechikib keldi ⚠️" if is_late else "<b>Holat:</b> O'z vaqtida keldi ✅"
@@ -564,16 +553,20 @@ def get_teacher_from_excel_bot(jshr: str):
     try:
         wb = openpyxl.load_workbook(XODIMLAR_FAYLI, data_only=True)
         ws = wb.active
+        kerak_emas_sozlar = ["qorovul", "farrosh", "soatbay"]
+        
         for row in ws.iter_rows(min_row=4, values_only=True):
             if row and len(row) >= 5:
                 row_name = str(row[1]).strip() if row[1] is not None else ""
                 row_position = str(row[2]).strip() if row[2] is not None else ""
                 row_tg = str(row[3]).strip() if row[3] is not None else ""
                 row_pnfl = str(row[4]).strip() if row[4] is not None else ""
+                
                 if row_pnfl == str(jshr).strip():
                     pos_lower = row_position.lower()
-                    if "farrosh" in pos_lower or "qorovul" in pos_lower:
-                        return "EXCLUDED", "EXCLUDED", None
+                    for soz in kerak_emas_sozlar:
+                        if soz in pos_lower:
+                            return "EXCLUDED", "EXCLUDED", None
                     return row_name, row_position, row_tg
     except Exception as e:
         print("Excelni botda o'qishda xatolik:", e)
@@ -599,7 +592,6 @@ async def cmd_start_bot(message: Message, state: FSMContext):
 async def process_jshr_bot(message: Message, state: FSMContext):
     jshr = message.text.strip()
     
-    # Bugun allaqachon o'tganligini tekshirish
     if bot_bugun_kelganmi(jshr):
         await message.answer("⚠️ <b>Siz bugun allaqachon davomatdan o'tgansiz!</b> Qayta o'tish mumkin emas.", parse_mode="HTML")
         await state.clear()
@@ -612,7 +604,6 @@ async def process_jshr_bot(message: Message, state: FSMContext):
     elif teacher_name:
         current_user_id = str(message.from_user.id)
         
-        # Birovning telefonidan o'tishni cheklash (Telegram ID bog'liqligi)
         if excel_tg_id and excel_tg_id != "nan" and excel_tg_id != "":
             if str(excel_tg_id) != current_user_id:
                 await message.answer("❌ <b>Xatolik!</b> Bu PNFL boshqa Telegram akkauntga biriktirilgan. Iltimos, faqat o'z shaxsiy telegramingizdan foydalaning!", parse_mode="HTML")
@@ -644,7 +635,7 @@ async def process_location_bot(message: Message, state: FSMContext):
 
     distance = hisobla_masofa(user_lat, user_lon, TEHNIKUM_LAT, TEHNIKUM_LON)
     if distance > DAVOMAT_MAX_MASOFA:
-        await message.answer(f"❌ Xatolik! Texnikum hududidan uzoqdasiz ({int(distance)} metr). Davomat uchun {DAVOMAT_MAX_MASOFA} metr ichida bo'lishingiz kerak.")
+        await message.answer(f"❌ Xatolik! Texnikum hududidan uzoqdasiz ({int(distance)} metr).")
         await state.clear()
         return
     
@@ -670,7 +661,6 @@ async def process_photo_bot(message: Message, state: FSMContext):
     time_str = now.strftime("%H:%M:%S")
     soat, minut = now.hour, now.minute
     
-    # Kechikish chegarasi: 08:30
     is_late = (soat > 8) or (soat == 8 and minut > 30)
     status = "Kechikib keldi ⚠️" if is_late else "O'z vaqtida keldi ✅"
     
@@ -761,19 +751,18 @@ async def cmd_hisobot_bot(message: Message):
     file = FSInputFile(EXCEL_REPORT)
     await message.answer_document(document=file, caption="📊 <b>Xodimlarning davomat hisoboti</b>", parse_mode="HTML")
 
-# --- ASOSIY ISHGA TUSHIRISH (Polling va Conflict oldini olish uchun) ---
-async def main():
-    try:
-        await bot_instance.delete_webhook(drop_pending_updates=True)
-    except Exception as e:
-        print("Webhookni tozalashda xatolik:", e)
-        
-    polling_task = asyncio.create_task(dp_instance.start_polling(bot_instance))
-    
-    server_thread = threading.Thread(target=lambda: app.run(host='0.0.0.0', port=5000, debug=False), daemon=True)
-    server_thread.start()
-    
-    await polling_task
-
+# --- ASOSIY ISHGA TUSHIRISH (Thread xavfsizligi bilan) ---
 if __name__ == '__main__':
-    asyncio.run(main())
+    def run_bot():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(bot_instance.delete_webhook(drop_pending_updates=True))
+            loop.run_until_complete(dp_instance.start_polling(bot_instance))
+        except Exception as e:
+            print("Bot xatosi:", e)
+
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
+    
+    app.run(host='0.0.0.0', port=5000, debug=False)
