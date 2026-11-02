@@ -19,7 +19,7 @@ app = Flask(__name__)
 app.secret_key = "yakkabog_davomat_maxfiy_kalit"
 
 # --- TELEGRAM BOT VA WEB UMUMIY SOZLAMALARI ---
-TELEGRAM_BOT_TOKEN = "8665708174:AAF9WFb0j0No6XBPXeeZM21vxKgq4Zeux04"
+TELEGRAM_BOT_TOKEN = "8418617685:AAFWyhwh3XiuwaqXyDqtK26zQz002ub30XY"
 ADMIN_CHAT_IDS = ["1179846016", "1838498079", "1611805500", "727029645"]
 ADMIN_IDS_INT = [1179846016, 1838498079, 1611805500, 727029645]
 
@@ -38,7 +38,7 @@ UZB_TZ = ZoneInfo("Asia/Tashkent")
 TEHNIKUM_LAT = 38.970790
 TEHNIKUM_LON = 66.706597
 
-# --- SIZ SO'ragan MASOFA SOZLAMALARI ---
+# --- MASOFA SOZLAMALARI ---
 DAVOMAT_MAX_MASOFA = 100    # Davomatdan o'tish uchun aniq 100 metr radius
 CHIQISH_XABAR_MASOFA = 400  # Hududdan chiqib ketish chegarasi 400 metr
 
@@ -161,7 +161,6 @@ def check_location():
         return {"status": "error", "message": "Xodim topilmadi"}, 404
     masofa = hisobla_masofa(lat, lon, TEHNIKUM_LAT, TEHNIKUM_LON)
     
-    # 400 metrdan oshsa hududdan chiqqan hisoblanadi
     if masofa > CHIQISH_XABAR_MASOFA:
         bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
         hozir_vaqt = datetime.now(UZB_TZ).strftime("%H:%M:%S")
