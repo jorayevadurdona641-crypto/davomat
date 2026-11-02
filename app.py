@@ -51,6 +51,7 @@ def xodimlarni_yuklash():
                 fio = str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else ""
                 lavozim = str(row.iloc[2]).strip() if pd.notna(row.iloc[2]) else "O'qituvchi"
                 tg_id = str(row.iloc[3]).strip() if len(row) > 3 and pd.notna(row.iloc[3]) else ""
+                pnfl = str(row.iloc[4]).strip() if len(row) > 4 and pd.notna(row.iloc[4]) else ""
                 
                 if fio and fio != "nan":
                     lavozim_kichik = lavozim.lower()
@@ -66,7 +67,8 @@ def xodimlarni_yuklash():
                             "id": xodim_id,
                             "fame": fio,
                             "lavozim": lavozim,
-                            "telegram_id": tg_id
+                            "telegram_id": tg_id,
+                            "pnfl": pnfl
                         })
             return xodimlar_royxati
         except Exception as e:
@@ -89,6 +91,15 @@ bazani_tekshir()
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+def bugun_kelganmi(xodim_id):
+    bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
+    if os.path.exists(EXCEL_HISOBOT):
+        df = pd.read_excel(EXCEL_HISOBOT)
+        mavjud = df[(df["ID"] == xodim_id) & (df["Sana"] == bugun) & (df["Kelish_Vaqti"] != "-")]
+        if not mavjud.empty:
+            return True
+    return False
 
 def davomatni_saqlash(xodim, amal, vaqt, holat_str="Hududda"):
     bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
@@ -176,10 +187,6 @@ def check_location():
         
         target_ids = list(ADMIN_CHAT_IDS)
         telegramga_rasmli_xabar_yuborish(fayl_path, matn_admin, target_chat_ids=target_ids)
-        
-        if xodim.get('telegram_id') and str(xodim['telegram_id']) != "nan":
-            matn_xodim = f"⚠️ <b>DIQQAT! Siz texnikum hududidan uzoqlashyapsiz!</b>\n\n👤 {xodim['fame']}\n📏 Masofa: <b>{int(masofa)} metr</b>\n⏰ Vaqt: {hozir_vaqt}\n\nIltimos, hududga (400m ichiga) qayting!"
-            telegramga_xabar_yuborish(str(xodim['telegram_id']), matn_xodim)
         
         return {"status": "out_of_bounds", "masofa": int(masofa)}
         
@@ -397,6 +404,11 @@ def verify():
     xodim_id = request.args.get('xodim_id')
     xodim = next((x for x in XODIMLAR if str(x['id']) == str(xodim_id)), None)
     if not xodim: return "Xodim topilmadi!"
+    
+    # Agar KIRISH qilmoqchi bo'lsa va allaqachon o'tgan bo'lsa
+    if action == 'KIRISH' and bugun_kelganmi(xodim['id']):
+        return "<h2 style='color:#f97316;text-align:center;margin-top:50px;'>⚠️ Siz bugun allaqachon davomatdan o'tgansiz! <a href='/'>Bosh sahifaga qaytish</a></h2>"
+
     return render_template_string('''
     <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><title>GPS</title></head>
     <body style="background:#0f172a;color:#fff;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;font-family:sans-serif;">
@@ -431,6 +443,9 @@ def result():
     xodim = next((x for x in XODIMLAR if str(x['id']) == str(xodim_id)), None)
     if not xodim: return "Xodim topilmadi!"
     
+    if action == 'KIRISH' and bugun_kelganmi(xodim['id']):
+        return "<h2 style='color:#f97316;text-align:center;margin-top:50px;'>⚠️ Siz bugun allaqachon davomatdan o'tgansiz! <a href='/'>Bosh sahifaga qaytish</a></h2>"
+
     masofa = hisobla_masofa(lat, lon, TEHNIKUM_LAT, TEHNIKUM_LON)
     if masofa > DAVOMAT_MAX_MASOFA:
         return f"<h2 style='color:red;text-align:center;margin-top:50px;'>❌ Masofa xatosi! Siz texnikumdan {int(masofa)} metr uzoqdasiz. Davomat faqat texnikum hududida (150m ichida) amalga oshiriladi. <a href='/'>Qaytish</a></h2>"
@@ -456,7 +471,8 @@ def result():
         target_chat_ids.append(str(xodim['telegram_id']).strip())
 
     if action == 'KIRISH':
-        is_late = (soat > 8) or (soat == 8 and minut > 35)
+        # Kechikish chegarasi: 08:30
+        is_late = (soat > 8) or (soat == 8 and minut > 30)
         holat_matn = "Kechikdi ⚠️" if is_late else "Hududda"
         kechikish_statusi = "<b>Holat:</b> Kechikib keldi ⚠️" if is_late else "<b>Holat:</b> O'z vaqtida keldi ✅"
         
@@ -544,7 +560,7 @@ class AttendanceState(StatesGroup):
 
 def get_teacher_from_excel_bot(jshr: str):
     if not os.path.exists(XODIMLAR_FAYLI):
-        return None, None
+        return None, None, None
     try:
         wb = openpyxl.load_workbook(XODIMLAR_FAYLI, data_only=True)
         ws = wb.active
@@ -552,15 +568,27 @@ def get_teacher_from_excel_bot(jshr: str):
             if row and len(row) >= 5:
                 row_name = str(row[1]).strip() if row[1] is not None else ""
                 row_position = str(row[2]).strip() if row[2] is not None else ""
+                row_tg = str(row[3]).strip() if row[3] is not None else ""
                 row_pnfl = str(row[4]).strip() if row[4] is not None else ""
                 if row_pnfl == str(jshr).strip():
                     pos_lower = row_position.lower()
                     if "farrosh" in pos_lower or "qorovul" in pos_lower:
-                        return "EXCLUDED", "EXCLUDED"
-                    return row_name, row_position
+                        return "EXCLUDED", "EXCLUDED", None
+                    return row_name, row_position, row_tg
     except Exception as e:
         print("Excelni botda o'qishda xatolik:", e)
-    return None, None
+    return None, None, None
+
+def bot_bugun_kelganmi(jshr):
+    bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
+    if os.path.exists(LOG_FILE):
+        with open(LOG_FILE, mode="r", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            next(reader, None)
+            for row in reader:
+                if len(row) >= 6 and row[0].strip() == str(jshr).strip() and row[3].strip() == bugun and "Keldi" in row[5]:
+                    return True
+    return False
 
 @dp_instance.message(Command("start"))
 async def cmd_start_bot(message: Message, state: FSMContext):
@@ -570,11 +598,27 @@ async def cmd_start_bot(message: Message, state: FSMContext):
 @dp_instance.message(AttendanceState.waiting_for_jshr, F.text)
 async def process_jshr_bot(message: Message, state: FSMContext):
     jshr = message.text.strip()
-    teacher_name, position = get_teacher_from_excel_bot(jshr)
+    
+    # Bugun allaqachon o'tganligini tekshirish
+    if bot_bugun_kelganmi(jshr):
+        await message.answer("⚠️ <b>Siz bugun allaqachon davomatdan o'tgansiz!</b> Qayta o'tish mumkin emas.", parse_mode="HTML")
+        await state.clear()
+        return
+
+    teacher_name, position, excel_tg_id = get_teacher_from_excel_bot(jshr)
     if teacher_name == "EXCLUDED":
         await message.answer("❌ Kechirasiz, ushbu tizim orqali davomat qayd etish qoidalariga ko'ra sizning lavozimingiz kiritilmagan.")
         await state.clear()
     elif teacher_name:
+        current_user_id = str(message.from_user.id)
+        
+        # Birovning telefonidan o'tishni cheklash (Telegram ID bog'liqligi)
+        if excel_tg_id and excel_tg_id != "nan" and excel_tg_id != "":
+            if str(excel_tg_id) != current_user_id:
+                await message.answer("❌ <b>Xatolik!</b> Bu PNFL boshqa Telegram akkauntga biriktirilgan. Iltimos, faqat o'z shaxsiy telegramingizdan foydalaning!", parse_mode="HTML")
+                await state.clear()
+                return
+
         await state.update_data(jshr=jshr, teacher_name=teacher_name, position=position)
         kb = ReplyKeyboardMarkup(
             keyboard=[[KeyboardButton(text="📍 Geolokatsiyani yuborish", request_location=True)]],
@@ -591,8 +635,13 @@ async def process_location_bot(message: Message, state: FSMContext):
     user_lat = message.location.latitude
     user_lon = message.location.longitude
     data = await state.get_data()
-    teacher_name = data.get("teacher_name")
+    jshr = data.get("jshr")
     
+    if bot_bugun_kelganmi(jshr):
+        await message.answer("⚠️ <b>Siz bugun allaqachon davomatdan o'tgansiz!</b>", parse_mode="HTML")
+        await state.clear()
+        return
+
     distance = hisobla_masofa(user_lat, user_lon, TEHNIKUM_LAT, TEHNIKUM_LON)
     if distance > DAVOMAT_MAX_MASOFA:
         await message.answer(f"❌ Xatolik! Texnikum hududidan uzoqdasiz ({int(distance)} metr). Davomat uchun {DAVOMAT_MAX_MASOFA} metr ichida bo'lishingiz kerak.")
@@ -604,9 +653,15 @@ async def process_location_bot(message: Message, state: FSMContext):
 
 @dp_instance.message(AttendanceState.waiting_for_photo, F.photo)
 async def process_photo_bot(message: Message, state: FSMContext):
-    photo_file_id = message.photo[-1].file_id
     data = await state.get_data()
     jshr = data.get("jshr")
+    
+    if bot_bugun_kelganmi(jshr):
+        await message.answer("⚠️ <b>Siz bugun allaqachon davomatdan o'tgansiz!</b>", parse_mode="HTML")
+        await state.clear()
+        return
+
+    photo_file_id = message.photo[-1].file_id
     teacher_name = data.get("teacher_name")
     position = data.get("position")
     
@@ -614,7 +669,9 @@ async def process_photo_bot(message: Message, state: FSMContext):
     date_str = now.strftime("%Y-%m-%d")
     time_str = now.strftime("%H:%M:%S")
     soat, minut = now.hour, now.minute
-    is_late = (soat > 8) or (soat == 8 and minut > 35)
+    
+    # Kechikish chegarasi: 08:30
+    is_late = (soat > 8) or (soat == 8 and minut > 30)
     status = "Kechikib keldi ⚠️" if is_late else "O'z vaqtida keldi ✅"
     
     with open(LOG_FILE, mode="a", encoding="utf-8", newline="") as f:
@@ -651,7 +708,7 @@ async def cmd_leave_bot(message: Message, state: FSMContext):
 @dp_instance.message(AttendanceState.waiting_for_leave, F.text)
 async def process_leave_bot(message: Message, state: FSMContext):
     text = message.text.strip()
-    teacher_name, position = get_teacher_from_excel_bot(text)
+    teacher_name, position, _ = get_teacher_from_excel_bot(text)
     if not teacher_name or teacher_name == "EXCLUDED":
         teacher_name = "Noma'lum xodim"
         position = "Noma'lum"
@@ -704,9 +761,13 @@ async def cmd_hisobot_bot(message: Message):
     file = FSInputFile(EXCEL_REPORT)
     await message.answer_document(document=file, caption="📊 <b>Xodimlarning davomat hisoboti</b>", parse_mode="HTML")
 
-# Asosiy ishga tushirish funksiyasi (Bot va Serverni birga yuritadi)
+# --- ASOSIY ISHGA TUSHIRISH (Polling va Conflict oldini olish uchun) ---
 async def main():
-    await bot_instance.delete_webhook(drop_pending_updates=True)
+    try:
+        await bot_instance.delete_webhook(drop_pending_updates=True)
+    except Exception as e:
+        print("Webhookni tozalashda xatolik:", e)
+        
     polling_task = asyncio.create_task(dp_instance.start_polling(bot_instance))
     
     server_thread = threading.Thread(target=lambda: app.run(host='0.0.0.0', port=5000, debug=False), daemon=True)
