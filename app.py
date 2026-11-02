@@ -38,8 +38,9 @@ UZB_TZ = ZoneInfo("Asia/Tashkent")
 TEHNIKUM_LAT = 38.970790
 TEHNIKUM_LON = 66.706597
 
-DAVOMAT_MAX_MASOFA = 100    # 100 metr hudud
-CHIQISH_XABAR_MASOFA = 500  # 500 metrdan chiqsa ogohlantirish
+# --- SIZ SO'ragan MASOFA SOZLAMALARI ---
+DAVOMAT_MAX_MASOFA = 100    # Davomatdan o'tish uchun aniq 100 metr radius
+CHIQISH_XABAR_MASOFA = 400  # Hududdan chiqib ketish chegarasi 400 metr
 
 def xodimlarni_yuklash():
     if os.path.exists(XODIMLAR_FAYLI):
@@ -118,9 +119,9 @@ def davomatni_saqlash(xodim, amal, vaqt, holat_str="Hududda"):
         if not mavjud.empty:
             df.loc[(df["ID"] == xodim["id"]) & (df["Sana"] == bugun), "Ketish_Vaqti"] = vaqt
             df.loc[(df["ID"] == xodim["id"]) & (df["Sana"] == bugun), "Holat"] = "Ketdi"
-            df.loc[(df["ID"] == xodim["id"]) & (df["Sana"] == bugun), "Oxirgi_Holat"] = "Ketib qoldi"
+            df.loc[(df["ID"] == xodim["id"]) & (df["Sana"] == bugun), "Oxirgi_Holat"] = "Chiqib ketdi ❌"
         else:
-            yangi_qator = {"ID": xodim["id"], "F.I.O": xodim["fame"], "Lavozimi": xodim["lavozim"], "Sana": bugun, "Kelish_Vaqti": "-", "Ketish_Vaqti": vaqt, "Holat": "Faqat Chiqish", "Oxirgi_Holat": "Ketib qoldi"}
+            yangi_qator = {"ID": xodim["id"], "F.I.O": xodim["fame"], "Lavozimi": xodim["lavozim"], "Sana": bugun, "Kelish_Vaqti": "-", "Ketish_Vaqti": vaqt, "Holat": "Faqat Chiqish", "Oxirgi_Holat": "Chiqib ketdi ❌"}
             df = pd.concat([df, pd.DataFrame([yangi_qator])], ignore_index=True)
     df.to_excel(EXCEL_HISOBOT, index=False)
 
@@ -160,13 +161,16 @@ def check_location():
         return {"status": "error", "message": "Xodim topilmadi"}, 404
     masofa = hisobla_masofa(lat, lon, TEHNIKUM_LAT, TEHNIKUM_LON)
     
+    # 400 metrdan oshsa hududdan chiqqan hisoblanadi
     if masofa > CHIQISH_XABAR_MASOFA:
         bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
         hozir_vaqt = datetime.now(UZB_TZ).strftime("%H:%M:%S")
-        davomatni_saqlash(xodim, "KIRISH", hozir_vaqt, holat_str=f"⚠️ 500m dan chiqdi ({int(masofa)}m)")
-        matn_admin = f"🚨 <b>DIQQAT! XODIM 500 METRDAN UZOQLASHDI!</b>\n\n👤 <b>F.I.O:</b> {xodim['fame']}\n📋 <b>Lavozimi:</b> {xodim['lavozim']}\n📏 Masofa: <b>{int(masofa)} metr</b> uzoqda!\n⏰ Vaqt: {hozir_vaqt}"
-        fayl_nomi = f"xodim_{xodim['id']}_{bugun}.jpg"
-        fayl_path = os.path.join(UPLOAD_FOLDER, fayl_nomi)
+        davomatni_saqlash(xodim, "KIRISH", hozir_vaqt, holat_str=f"❌ 400m dan chiqdi ({int(masofa)}m)")
+        matn_admin = f"🚨 <b>DIQQAT! XODIM 400 METRDAN O'TIB KETDI!</b>\n\n👤 <b>F.I.O:</b> {xodim['fame']}\n📋 <b>Lavozimi:</b> {xodim['lavozim']}\n📏 Masofa: <b>{int(masofa)} metr</b> uzoqda!\n⏰ Vaqt: {hozir_vaqt}\n❌ Holat: Hududni tark etgan!"
+        
+        fayllar = [f for f in os.listdir(UPLOAD_FOLDER) if f.startswith(f"xodim_{xodim['id']}_")]
+        fayl_path = os.path.join(UPLOAD_FOLDER, fayllar[-1]) if fayllar else ""
+        
         target_ids = list(ADMIN_CHAT_IDS)
         telegramga_rasmli_xabar_yuborish(fayl_path, matn_admin, target_chat_ids=target_ids)
         return {"status": "out_of_bounds", "masofa": int(masofa)}
@@ -249,8 +253,8 @@ def admin_panel():
                 <td>{{ row['Kelish_Vaqti'] }}</td>
                 <td>{{ row['Ketish_Vaqti'] }}</td>
                 <td>
-                    {% if '500m' in row['Oxirgi_Holat'] or 'uzoqla' in row['Oxirgi_Holat'] %}
-                        <span class="badge-ogoh">{{ row['Oxirgi_Holat'] }}</span>
+                    {% if '400m' in row['Oxirgi_Holat'] or 'Chiqib ketdi' in row['Oxirgi_Holat'] %}
+                        <span class="badge-chiqdi">{{ row['Oxirgi_Holat'] }}</span>
                     {% elif 'Kechikdi' in row['Oxirgi_Holat'] %}
                         <span class="badge-kechikdi">{{ row['Oxirgi_Holat'] }}</span>
                     {% elif row['Holat'] == 'Keldi' %}
@@ -314,7 +318,6 @@ def index():
     </div></body></html>
     ''')
 
-# QR Kod yoki to'g'ridan-to'g'ri ism orqali kirish (QR kod orqali skanerlanganda: /select-employee?action=KIRISH&id=5)
 @app.route('/select-employee')
 def select_employee():
     action = request.args.get('action', 'KIRISH')
@@ -322,7 +325,6 @@ def select_employee():
     global XODIMLAR
     XODIMLAR = xodimlarni_yuklash()
     
-    # Agar QR kod orqali to'g'ridan-to'g'ri ID kelgan bo'lsa
     if pre_id:
         return redirect(url_for('verify', action=action, xodim_id=pre_id))
 
@@ -405,7 +407,7 @@ def verify():
             }, err => { 
                 alert("GPS xatosi! Lokatsiyaga ruxsat bering yoki ochiq havoda urinib ko'ring."); 
                 window.location.href='/'; 
-            }, {enableHighAccuracy: false, timeout: 30000, maximumAge: 60000});
+            }, {enableHighAccuracy: true, timeout: 30000, maximumAge: 0});
         </script>
     </body></html>
     ''', action=action, xodim=xodim)
@@ -465,7 +467,7 @@ def result():
             if soat < 16:
                 return "<h2 style='color:red;text-align:center;margin-top:50px;'>❌ Hali ketish vaqti emas! 16:00 dan oldin chiqib bo'lmaydi. <a href='/'>Qaytish</a></h2>"
                 
-        davomatni_saqlash(xodim, "CHIQISH", vaqt_str, holat_str="Ketib qoldi")
+        davomatni_saqlash(xodim, "CHIQISH", vaqt_str, holat_str="Chiqib ketdi ❌")
         matn_xabar = f"🔴 <b>CHIQISH (Ketish) - {bugun}</b>\n\n👤 <b>F.I.O:</b> {xodim['fame']}\n📋 <b>Lavozimi:</b> {xodim['lavozim']}\n⏰ <b>Vaqt:</b> {vaqt_str}\n<b>Holat:</b> Ishdan ketdi 🔴\n📍 <b>Masofa:</b> {int(masofa)}m"
         telegramga_rasmli_xabar_yuborish(fayl_path, matn_xabar, target_chat_ids=target_chat_ids)
 
@@ -675,7 +677,7 @@ async def process_leave_bot(message: Message, state: FSMContext):
 async def cmd_hisobot_bot(message: Message):
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Davomat`"
+    ws.title = "Davomat"
     ws.append(["PNFL", "F.I.Sh.", "Lavozim", "Sana", "Vaqt", "Holati", "Oxirgi_Holat"])
     if os.path.exists(LOG_FILE):
         with open(LOG_FILE, mode="r", encoding="utf-8") as f:
@@ -695,7 +697,7 @@ if __name__ == '__main__':
             loop.run_until_complete(bot_instance.delete_webhook(drop_pending_updates=True))
             loop.run_until_complete(dp_instance.start_polling(bot_instance))
         except Exception as e:
-            print("Bot xatosi:", e)
+            print("Botdagi xatolik:", e)
 
     bot_thread = threading.Thread(target=run_bot, daemon=True)
     bot_thread.start()
