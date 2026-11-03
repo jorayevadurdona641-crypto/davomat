@@ -466,7 +466,6 @@ def bot_bugun_kelganmi(jshr):
     if os.path.exists(EXCEL_HISOBOT):
         df = pd.read_excel(EXCEL_HISOBOT)
         for _, row in df.iterrows():
-            # PNFL ni xodimlardan qidirib topamiz
             xodim_topildi = next((x for x in XODIMLAR if str(x.get('pnfl')) == str(jshr) and str(x.get('id')) == str(row.get('ID'))), None)
             if xodim_topildi and str(row.get('Sana')) == bugun and str(row.get('Kelish_Vaqti')) != "-":
                 return True
@@ -570,6 +569,8 @@ def set_webhook():
     try: requests.get(url)
     except Exception as e: print("Webhookni o'rnatishda xatolik:", e)
 
+# Webhook ni avtomatik o'rnatish uchun
+set_webhook()
+
 if __name__ == '__main__':
-    set_webhook()
     app.run(host='0.0.0.0', port=5000, debug=False)
