@@ -28,7 +28,6 @@ UZB_TZ = ZoneInfo("Asia/Tashkent")
 
 TEHNIKUM_LAT = 38.970790
 TEHNIKUM_LON = 66.706597
-DAVOMAT_MAX_MASOFA = 100
 
 def xodimlarni_yuklash():
     if os.path.exists(XODIMLAR_FAYLI):
@@ -253,21 +252,37 @@ def select_employee():
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
         .card { background: #1e293b; padding: 30px; border-radius: 20px; width: 100%; max-width: 420px; text-align: center; box-sizing: border-box; }
-        input, select { width: 100%; padding: 15px; border-radius: 12px; background: #0f172a; color: #fff; border: 1px solid #334155; margin-bottom: 20px; font-size: 16px; box-sizing: border-box; }
+        input[type="text"], select { width: 100%; padding: 15px; border-radius: 12px; background: #0f172a; color: #fff; border: 1px solid #334155; margin-bottom: 20px; font-size: 16px; box-sizing: border-box; }
         .btn { width: 100%; padding: 16px; border: none; border-radius: 12px; background: #3b82f6; color: white; font-size: 18px; font-weight: bold; cursor: pointer; }
     </style></head>
     <body><div class="card">
-        <h3 style="color:#38bdf8; font-size: 22px; margin-top:0;">Xodimni tanlang</h3>
+        <h3 style="color:#38bdf8; font-size: 22px; margin-top:0;">Xodimni qidirish va tanlash</h3>
         <p style="color:#94a3b8; font-size: 15px;">Harakat: <b>{{ action }}</b></p>
         <form action="/verify" method="GET">
             <input type="hidden" name="action" value="{{ action }}">
-            <select name="xodim_id" required><option value="" disabled selected>-- Ism familiya --</option>
-            {% for x in xodimlar %}<option value="{{ x.id }}">{{ x.fame }} ({{ x.lavozim }})</option>{% endfor %}</select>
+            <input type="text" id="searchInput" placeholder="🔍 Ism yoki familiyani yozib qidiring..." onkeyup="filterEmployees()">
+            <select name="xodim_id" id="employeeSelect" required><option value="" disabled selected>-- Ism familiyani tanlang --</option>
+            {% for x in xodimlar %}<option value="{{ x.id }}" data-name="{{ x.fame | lower }}">{{ x.fame }} ({{ x.lavozim }})</option>{% endfor %}</select>
             <div style="text-align:left;margin-bottom:20px;"><label style="font-size:15px;color:#38bdf8;display:block;margin-bottom:8px;">📸 Selfie rasm:</label>
             <input type="file" name="emp_photo" accept="image/*" capture="user" required style="font-size: 14px; color:#fff;"></div>
             <button type="submit" class="btn">Tasdiqlash</button>
         </form><a href="/" style="display:block;margin-top:20px;color:#94a3b8;text-decoration:none;font-size:15px;">⟵ Qaytish</a>
-    </div></body></html>
+    </div>
+    <script>
+        function filterEmployees() {
+            let input = document.getElementById('searchInput').value.toLowerCase();
+            let select = document.getElementById('employeeSelect');
+            let options = select.options;
+            for (let i = 1; i < options.length; i++) {
+                let name = options[i].getAttribute('data-name');
+                if (name.includes(input)) {
+                    options[i].style.display = "";
+                } else {
+                    options[i].style.display = "none";
+                }
+            }
+        }
+    </script></body></html>
     ''', action=action, xodimlar=XODIMLAR)
 
 @app.route('/verify')
@@ -304,19 +319,6 @@ def result():
     if not xodim: return "Xodim topilmadi!"
 
     masofa = hisobla_masofa(lat, lon, TEHNIKUM_LAT, TEHNIKUM_LON)
-    if masofa > DAVOMAT_MAX_MASOFA:
-        return f"""
-        <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Masofa xatosi</title>
-        <style>body{{font-family:'Segoe UI',sans-serif;background:#0f172a;color:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;}}
-        .card{{background:#1e293b;padding:40px 30px;border-radius:20px;text-align:center;max-width:420px;width:100%;box-shadow:0 15px 35px rgba(0,0,0,0.5);box-sizing:border-box;}}
-        h2{{color:#ef4444;font-size:24px;margin-bottom:15px;}}p{{color:#94a3b8;font-size:16px;margin-bottom:25px;}}
-        .btn{{display:block;width:100%;padding:16px;background:#38bdf8;color:#0f172a;font-weight:bold;font-size:18px;border-radius:12px;text-decoration:none;box-sizing:border-box;}}</style></head>
-        <body><div class="card">
-            <h2>❌ Masofa xatosi!</h2>
-            <p>Siz texnikumdan <b>{int(masofa)} metr</b> uzoqdasiz. Davomat faqat {DAVOMAT_MAX_MASOFA} metr ichida qabul qilinadi.</p>
-            <a href="/" class="btn">Bosh sahifaga qaytish</a>
-        </div></body></html>
-        """
 
     bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
     fayl_nomi = f"xodim_{xodim['id']}_{bugun}_{datetime.now(UZB_TZ).strftime('%H%M%S')}.jpg"
@@ -343,14 +345,15 @@ def result():
         if is_late:
             tabrik_matn = "Afsuski, siz kechikdingiz! ⚠️"
             rang = "#f97316"
+            holat_telegram = "Holat: Kechikib keldi ⚠️"
         else:
             tabrik_matn = "Tabriklaymiz, siz vaqtida o'tdingiz! 🎉"
             rang = "#22c55e"
+            holat_telegram = "Holat: O'z vaqtida keldi ✅"
 
-        kechikish_statusi = "<b>Holat:</b> Kechikib keldi ⚠️" if is_late else "<b>Holat:</b> O'z vaqtida keldi ✅"
         davomatni_saqlash(xodim, "KIRISH", vaqt_str, holat_str=holat_matn)
         
-        matn_xabar = f"🟢 <b>KIRISH (Kelish) - {bugun}</b>\n\n👤 <b>F.I.O:</b> {xodim['fame']}\n📋 <b>Lavozimi:</b> {xodim['lavozim']}\n⏰ <b>Vaqt:</b> {vaqt_str}\n{kechikish_statusi}\n📍 <b>Masofa:</b> {int(masofa)}m"
+        matn_xabar = f"🟢 <b>KIRISH (Kelish) - {bugun}</b>\n\n👤 <b>F.I.O:</b> {xodim['fame']}\n📋 <b>Lavozimi:</b> {xodim['lavozim']}\n⏰ <b>Vaqt:</b> {vaqt_str}\n{holat_telegram}\n📍 <b>Masofa:</b> {int(masofa)}m"
         telegramga_rasmli_xabar_yuborish(fayl_path, matn_xabar, target_chat_ids=target_chat_ids)
 
         return f"""
@@ -370,7 +373,7 @@ def result():
             <h3 style="font-size:22px;margin:10px 0 5px 0;color:#f8fafc;">{xodim['fame']}</h3>
             <p>{xodim['lavozim']}</p>
             <div class="time-box">⏰ Vaqt: {vaqt_str}</div>
-            <p style="color:#22c55e;font-size:15px;margin-bottom:25px;">Davomatingiz muvaffaqiyatli saqlandi va adminga yuborildi!</p>
+            <p style="color:#22c55e;font-size:15px;margin-bottom:25px;">Davomatingiz muvaffaqiyatli saqlandi va adminga yuborildi! (Masofa: {int(masofa)}m)</p>
             <a href="/" class="btn">Bosh sahifaga qaytish</a>
         </div></body></html>
         """
@@ -397,7 +400,7 @@ def result():
             <h3 style="font-size:22px;margin:10px 0 5px 0;color:#f8fafc;">{xodim['fame']}</h3>
             <p>{xodim['lavozim']}</p>
             <div class="time-box">⏰ Vaqt: {vaqt_str}</div>
-            <p style="color:#ef4444;font-size:15px;margin-bottom:25px;">Ishdan ketganingiz muvaffaqiyatli saqlandi va adminga yuborildi!</p>
+            <p style="color:#ef4444;font-size:15px;margin-bottom:25px;">Ishdan ketganingiz muvaffaqiyatli saqlandi va adminga yuborildi! (Masofa: {int(masofa)}m)</p>
             <a href="/" class="btn">Bosh sahifaga qaytish</a>
         </div></body></html>
         """
