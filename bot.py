@@ -70,7 +70,6 @@ def bot_bugun_kelganmi(jshr):
         df = pd.read_excel(EXCEL_HISOBOT)
         for _, row in df.iterrows():
             if str(row.get('Sana')) == bugun and str(row.get('Kelish_Vaqti')) != "-":
-                # PNFL orqali tekshirish
                 pass
     if os.path.exists(LOG_FILE):
         with open(LOG_FILE, mode="r", encoding="utf-8") as f:
@@ -148,6 +147,9 @@ async def process_location_bot(message: Message, state: FSMContext):
         await state.clear()
         return
 
+    # Masofani holat uchun saqlab qo'yamiz
+    await state.update_data(distance=int(distance))
+
     await state.set_state(AttendanceState.waiting_for_photo)
     await message.answer("Lokatsiya tasdiqlandi ✅ Endi davomat uchun o'z <b>rasmingizni (selfie)</b> yuboring:", parse_mode="HTML", reply_markup=None)
 
@@ -163,6 +165,7 @@ async def process_photo_bot(message: Message, state: FSMContext):
     photo_file_id = message.photo[-1].file_id
     teacher_name = data.get("teacher_name")
     position = data.get("position")
+    distance = data.get("distance", 0)
     
     now = datetime.now(UZB_TZ)
     date_str = now.strftime("%Y-%m-%d")
@@ -170,7 +173,7 @@ async def process_photo_bot(message: Message, state: FSMContext):
     soat, minut = now.hour, now.minute
     
     is_late = (soat > 8) or (soat == 8 and minut > 30)
-    status = "Kechikib keldi ⚠️" if is_late else "O'z vaqtida keldi ✅"
+    status_text = "Kechikib keldi ⚠️" if is_late else "O'z vaqtida keldi ✅"
     holat_matn = "Kechikdi ⚠️" if is_late else "Hududda"
 
     davomatni_saqlash_bot(jshr, teacher_name, position, time_str, holat_matn)
@@ -182,16 +185,18 @@ async def process_photo_bot(message: Message, state: FSMContext):
 
     with open(LOG_FILE, mode="a", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow([jshr, teacher_name, position, date_str, time_str, status, "Keldi"])
+        writer.writerow([jshr, teacher_name, position, date_str, time_str, status_text, "Keldi"])
 
     await state.clear()
     
+    # Rasmda ko'rsatilgan formatga to'liq moslangan xabarlar shabloni:
     caption_text = (
         f"🟢 <b>KIRISH (Kelish) - {date_str}</b>\n\n"
         f"👤 <b>F.I.O:</b> {teacher_name}\n"
         f"📋 <b>Lavozimi:</b> {position}\n"
         f"⏰ <b>Vaqt:</b> {time_str}\n"
-        f"<b>Holat:</b> {status}"
+        f"Holat: {status_text}\n"
+        f"📍 <b>Masofa:</b> {distance}m"
     )
     
     await message.answer(f"Rahmat, {teacher_name}! Kelgan vaqtingiz muvaffaqiyatli qayd etildi ✅")
