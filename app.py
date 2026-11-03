@@ -28,7 +28,8 @@ UZB_TZ = ZoneInfo("Asia/Tashkent")
 
 TEHNIKUM_LAT = 38.970790
 TEHNIKUM_LON = 66.706597
-DAVOMAT_MAX_MASOFA = 100  # Qat'iy ruxsat etilgan hudud chegarasi (100 metr)
+DAVOMAT_MAX_MASOFA = 100     # Qat'iy davomat o'tish masofasi (100 metr)
+OGOHLANTIRISH_MASOFA = 500   # Hududdan chiqib ketish masofasi (500 metr)
 
 def xodimlarni_yuklash():
     if os.path.exists(XODIMLAR_FAYLI):
@@ -78,15 +79,6 @@ bazani_tekshir()
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
-
-def bugun_kelganmi(xodim_id):
-    bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
-    if os.path.exists(EXCEL_HISOBOT):
-        df = pd.read_excel(EXCEL_HISOBOT)
-        mavjud = df[(df["ID"] == xodim_id) & (df["Sana"] == bugun) & (df["Kelish_Vaqti"] != "-")]
-        if not mavjud.empty:
-            return True
-    return False
 
 def davomatni_saqlash(xodim, amal, vaqt, holat_str="Hududda"):
     bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
@@ -223,7 +215,7 @@ def admin_panel():
                 <td>{{ r['Ketish_Vaqti'] }}</td>
                 <td>
                     {% if 'Chiqib' in r['Oxirgi_Holat'] %}<span class="badge-chiqdi">{{ r['Oxirgi_Holat'] }}</span>
-                    {% elif 'Tashqarida' in r['Oxirgi_Holat'] %}<span class="badge-tashqarida">{{ r['Oxirgi_Holat'] }}</span>
+                    {% elif 'Hududdan chiqib ketgan' in r['Oxirgi_Holat'] or 'Tashqarida' in r['Oxirgi_Holat'] %}<span class="badge-tashqarida">{{ r['Oxirgi_Holat'] }}</span>
                     {% elif 'Kechikdi' in r['Oxirgi_Holat'] %}<span class="badge-kechikdi">{{ r['Oxirgi_Holat'] }}</span>
                     {% else %}<span class="badge-keldi">Hududda</span>{% endif %}
                 </td>
@@ -323,6 +315,21 @@ def result():
 
     masofa = hisobla_masofa(lat, lon, TEHNIKUM_LAT, TEHNIKUM_LON)
 
+    # Qat'iy cheklov: agar masofa 100 metrdan oshsa, davomat qabul qilinmaydi!
+    if masofa > DAVOMAT_MAX_MASOFA:
+        return f"""
+        <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Masofa xatosi</title>
+        <style>body{{font-family:'Segoe UI',sans-serif;background:#0f172a;color:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;}}
+        .card{{background:#1e293b;padding:40px 30px;border-radius:20px;text-align:center;max-width:420px;width:100%;box-shadow:0 15px 35px rgba(0,0,0,0.5);box-sizing:border-box;}}
+        h2{{color:#ef4444;font-size:24px;margin-bottom:15px;}}p{{color:#94a3b8;font-size:16px;margin-bottom:25px;}}
+        .btn{{display:block;width:100%;padding:16px;background:#38bdf8;color:#0f172a;font-weight:bold;font-size:18px;border-radius:12px;text-decoration:none;box-sizing:border-box;}}</style></head>
+        <body><div class="card">
+            <h2>❌ Masofa xatosi!</h2>
+            <p>Siz texnikumdan <b>{int(masofa)} metr</b> uzoqdasiz. Davomat faqat {DAVOMAT_MAX_MASOFA} metr ichida qabul qilinadi!</p>
+            <a href="/" class="btn">Bosh sahifaga qaytish</a>
+        </div></body></html>
+        """
+
     bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
     fayl_nomi = f"xodim_{xodim['id']}_{bugun}_{datetime.now(UZB_TZ).strftime('%H%M%S')}.jpg"
     fayl_path = os.path.join(UPLOAD_FOLDER, fayl_nomi)
@@ -343,14 +350,13 @@ def result():
 
     if action == 'KIRISH':
         is_late = (soat > 8) or (soat == 8 and minut > 30)
-        is_out_of_bounds = masofa > DAVOMAT_MAX_MASOFA  # 100 metrdan uzoqmi?
 
-        # Holatni aniqlash
-        if is_out_of_bounds:
-            holat_matn = f"Tashqarida ⚠️ ({int(masofa)}m)"
-            tabrik_matn = f"Diqqat! Siz hududdan tashqaridasiz ({int(masofa)}m)! ⚠️"
+        # 500 metrdan chiqib ketganligini tekshirish
+        if masofa > OGOHLANTIRISH_MASOFA:
+            holat_matn = f"Hududdan chiqib ketgan 🚨 ({int(masofa)}m)"
+            tabrik_matn = f"Diqqat! Siz hududdan chiqib ketgansiz ({int(masofa)}m)! ⚠️"
             rang = "#eab308"
-            holat_telegram = f"Holat: <b>DIQQAT! HUDUDDAN TASHQARIDA! ({int(masofa)}m)</b> 🚨"
+            holat_telegram = f"Holat: <b>🚨 DIQQAT! XODIM HUDUDDAN CHIQIB KETGAN! ({int(masofa)}m)</b>"
         elif is_late:
             holat_matn = "Kechikdi ⚠️"
             tabrik_matn = "Afsuski, siz kechikdingiz! ⚠️"
@@ -364,7 +370,6 @@ def result():
 
         davomatni_saqlash(xodim, "KIRISH", vaqt_str, holat_str=holat_matn)
         
-        # Adminga yuboriladigan xabar (Siz ko'rsatgan rasm formatida va masofa bilan)
         matn_xabar = f"🟢 <b>KIRISH (Kelish) - {bugun}</b>\n\n👤 <b>F.I.O:</b> {xodim['fame']}\n📋 <b>Lavozimi:</b> {xodim['lavozim']}\n⏰ <b>Vaqt:</b> {vaqt_str}\n{holat_telegram}\n📍 <b>Masofa:</b> {int(masofa)}m"
         telegramga_rasmli_xabar_yuborish(fayl_path, matn_xabar, target_chat_ids=target_chat_ids)
 
