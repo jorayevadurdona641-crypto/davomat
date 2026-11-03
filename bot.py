@@ -7,7 +7,7 @@ import pandas as pd
 import openpyxl
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
-from aiogram.types import Message, FSInputFile, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 
@@ -18,7 +18,6 @@ ADMIN_IDS_INT = [1179846016, 1838498079, 1611805500, 727029645]
 EXCEL_HISOBOT = "davomat_hisobot.xlsx"
 XODIMLAR_FAYLI = "Umumiy maʼlumot.xlsx"
 LOG_FILE = "attendance_log.csv"
-EXCEL_REPORT = "xodimlar_hisoboti.xlsx"
 
 UZB_TZ = ZoneInfo("Asia/Tashkent")
 TEHNIKUM_LAT = 38.970790
@@ -66,11 +65,6 @@ def get_teacher_from_excel_bot(jshr: str):
 
 def bot_bugun_kelganmi(jshr):
     bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
-    if os.path.exists(EXCEL_HISOBOT):
-        df = pd.read_excel(EXCEL_HISOBOT)
-        for _, row in df.iterrows():
-            if str(row.get('Sana')) == bugun and str(row.get('Kelish_Vaqti')) != "-":
-                pass
     if os.path.exists(LOG_FILE):
         with open(LOG_FILE, mode="r", encoding="utf-8") as f:
             reader = csv.reader(f)
