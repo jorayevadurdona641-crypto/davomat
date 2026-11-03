@@ -11,7 +11,7 @@ import openpyxl
 app = Flask(__name__)
 app.secret_key = "yakkabog_davomat_maxfiy_kalit"
 
-# --- TELEGRAM BOT TOKENI ---
+# --- TELEGRAM BOT TOKENI VA ADMIN ID LAR ---
 TELEGRAM_BOT_TOKEN = "8418617685:AAEeepVkX_wp3opdVUbW0z99bXxWbJQOfmA"
 ADMIN_CHAT_IDS = ["1179846016", "1838498079", "1611805500", "727029645"]
 
@@ -315,7 +315,7 @@ def result():
 
     masofa = hisobla_masofa(lat, lon, TEHNIKUM_LAT, TEHNIKUM_LON)
 
-    # Qat'iy cheklov: agar masofa 100 metrdan oshsa, davomat qabul qilinmaydi!
+    # Qat'iy cheklov: 100 metrdan oshsa davomat qabul qilinmaydi
     if masofa > DAVOMAT_MAX_MASOFA:
         return f"""
         <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Masofa xatosi</title>
@@ -351,7 +351,7 @@ def result():
     if action == 'KIRISH':
         is_late = (soat > 8) or (soat == 8 and minut > 30)
 
-        # 500 metrdan chiqib ketganligini tekshirish
+        # 500 metrdan oshsa hududdan chiqib ketgan deb hisoblanadi
         if masofa > OGOHLANTIRISH_MASOFA:
             holat_matn = f"Hududdan chiqib ketgan 🚨 ({int(masofa)}m)"
             tabrik_matn = f"Diqqat! Siz hududdan chiqib ketgansiz ({int(masofa)}m)! ⚠️"
