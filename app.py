@@ -21,14 +21,13 @@ app.secret_key = "yakkabog_davomat_maxfiy_kalit"
 TELEGRAM_BOT_TOKEN = "8418617685:AAFWyhwh3XiuwaqXyDqtK26zQz002ub30XY"
 ADMIN_CHAT_IDS = ["1179846016", "1838498079", "1611805500", "727029645"]
 ADMIN_IDS_INT = [1179846016, 1838498079, 1611805500, 727029645]
+ADMIN_PAROL = "7777"
 
-# Render'dagi veb-saytingiz manzili (Webhook uchun juda muhim!)
-WEBHOOK_URL = f"https://yakkabog-davomat.onrender.com/webhook/{TELEGRAM_BOT_TOKEN}"
+WEBHOOK_URL = f"https://davomat-up9d.onrender.com/webhook/{TELEGRAM_BOT_TOKEN}"
 
 EXCEL_HISOBOT = "davomat_hisobot.xlsx"
 XODIMLAR_FAYLI = "Umumiy maʼlumot.xlsx"
 LOG_FILE = "attendance_log.csv"
-EXCEL_REPORT = "xodimlar_hisoboti.xlsx"
 UPLOAD_FOLDER = "uploads"
 
 if not os.path.exists(UPLOAD_FOLDER):
@@ -115,6 +114,8 @@ def davomatni_saqlash(xodim, amal, vaqt, holat_str="Hududda"):
             yangi_qator = {"ID": xodim["id"], "F.I.O": xodim["fame"], "Lavozimi": xodim["lavozim"], "Sana": bugun, "Kelish_Vaqti": vaqt, "Ketish_Vaqti": "-", "Holat": "Keldi", "Oxirgi_Holat": holat_str}
             df = pd.concat([df, pd.DataFrame([yangi_qator])], ignore_index=True)
         else:
+            df.loc[(df["ID"] == xodim["id"]) & (df["Sana"] == bugun), "Kelish_Vaqti"] = vaqt
+            df.loc[(df["ID"] == xodim["id"]) & (df["Sana"] == bugun), "Holat"] = "Keldi"
             df.loc[(df["ID"] == xodim["id"]) & (df["Sana"] == bugun), "Oxirgi_Holat"] = holat_str
     elif amal == "CHIQISH":
         if not mavjud.empty:
@@ -170,6 +171,118 @@ def index():
         <a href="/admin-login" class="btn btn-admin">🛡️ Admin Kuzatuv Paneli</a>
     </div></body></html>
     ''')
+
+@app.route('/admin-login', methods=['GET', 'POST'])
+def admin_login():
+    error = None
+    if request.method == 'POST':
+        parol = request.form.get('parol')
+        if parol == ADMIN_PAROL:
+            session['admin_logged'] = True
+            return redirect(url_for('admin_panel'))
+        else:
+            error = "Parol noto'g'ri! (7777 ni kiriting)"
+    return render_template_string('''
+    <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><title>Admin Kirish</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: #1e293b; padding: 30px; border-radius: 16px; width: 100%; max-width: 360px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
+        input[type="password"] { width: 100%; padding: 12px; border-radius: 8px; background: #0f172a; color: #fff; border: 1px solid #334155; margin-bottom: 15px; font-size:16px; box-sizing: border-box; text-align: center; letter-spacing: 3px; }
+        .btn { width: 100%; padding: 12px; border: none; border-radius: 8px; background: #38bdf8; color: #0f172a; font-size: 16px; font-weight: bold; cursor: pointer; box-sizing: border-box; }
+    </style></head>
+    <body><div class="card">
+        <h3 style="color: #38bdf8; margin-top:0;">🛡️ Admin Paneli</h3>
+        <p style="color: #94a3b8; font-size: 13px;">Parolni kiriting (7777):</p>
+        {% if error %}<p style="color:red; font-size:14px;">{{ error }}</p>{% endif %}
+        <form method="POST">
+            <input type="password" name="parol" placeholder="••••" required autofocus>
+            <button type="submit" class="btn">Kirish</button>
+        </form>
+        <a href="/" style="display:block;margin-top:15px;color:#94a3b8;text-decoration:none;font-size:14px;">⟵ Bosh sahifaga</a>
+    </div></body></html>
+    ''', error=error)
+
+@app.route('/admin')
+def admin_panel():
+    if not session.get('admin_logged'):
+        return redirect(url_for('admin_login'))
+    
+    bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
+    kelganlar_dict = {}
+    
+    if os.path.exists(EXCEL_HISOBOT):
+        df_hisobot = pd.read_excel(EXCEL_HISOBOT)
+        df_bugun = df_hisobot[df_hisobot['Sana'] == bugun]
+        for _, row in df_bugun.iterrows():
+            kelganlar_dict[str(row['ID'])] = {
+                'Kelish_Vaqti': row['Kelish_Vaqti'],
+                'Ketish_Vaqti': row['Ketish_Vaqti'],
+                'Holat': row['Holat']
+            }
+    
+    umumiy_hisobot = []
+    global XODIMLAR
+    XODIMLAR = xodimlarni_yuklash()
+    
+    for xodim in XODIMLAR:
+        x_id = str(xodim['id'])
+        if x_id in kelganlar_dict:
+            status_data = kelganlar_dict[x_id]
+            umumiy_hisobot.append({
+                "ID": xodim['id'],
+                "F.I.O": xodim['fame'],
+                "Lavozimi": xodim['lavozim'],
+                "Kelish_Vaqti": status_data['Kelish_Vaqti'],
+                "Ketish_Vaqti": status_data['Ketish_Vaqti'],
+                "Holat_St": "Hududda ✅" if status_data['Holat'] == "Keldi" else "Chiqib ketdi ❌"
+            })
+        else:
+            umumiy_hisobot.append({
+                "ID": xodim['id'],
+                "F.I.O": xodim['fame'],
+                "Lavozimi": xodim['lavozim'],
+                "Kelish_Vaqti": "-",
+                "Ketish_Vaqti": "-",
+                "Holat_St": "Kelmadi ❌"
+            })
+
+    return render_template_string('''
+    <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><title>Admin Kuzatuv</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 20px; }
+        .container { max-width: 1100px; margin: auto; background: #1e293b; padding: 25px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
+        h2 { color: #38bdf8; margin-top: 0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
+        th, td { padding: 12px; border-bottom: 1px solid #334155; text-align: left; }
+        th { background: #0f172a; color: #38bdf8; }
+        .btn { padding: 10px 20px; background: #ef4444; color: white; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; font-weight: bold; display: inline-block; margin-bottom: 15px; }
+    </style></head>
+    <body><div class="container">
+        <h2>🛡️ Bugungi Xodimlar Davomati ({{ bugun }})</h2>
+        <a href="/" class="btn">⟵ Bosh sahifa</a>
+        <table>
+            <tr><th>ID</th><th>F.I.O</th><th>Lavozimi</th><th>Kelish Vaqti</th><th>Ketish Vaqti</th><th>Holati</th></tr>
+            {% for r in umumiy_hisobot %}
+            <tr>
+                <td>{{ r.ID }}</td>
+                <td>{{ r['F.I.O'] }}</td>
+                <td>{{ r.Lavozimi }}</td>
+                <td style="color:#22c55e;">{{ r.Kelish_Vaqti }}</td>
+                <td style="color:#ef4444;">{{ r.Ketish_Vaqti }}</td>
+                <td>
+                    {% if "Hududda" in r.Holat_St %}
+                        <span style="color:#22c55e; font-weight:bold;">{{ r.Holat_St }}</span>
+                    {% elif "Chiqib" in r.Holat_St %}
+                        <span style="color:#f97316; font-weight:bold;">{{ r.Holat_St }}</span>
+                    {% else %}
+                        <span style="color:#ef4444; font-weight:bold;">{{ r.Holat_St }}</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div></body></html>
+    ''', umumiy_hisobot=umumiy_hisobot, bugun=bugun)
 
 @app.route('/select-employee')
 def select_employee():
@@ -327,7 +440,6 @@ class AttendanceState(StatesGroup):
     waiting_for_jshr = State()
     waiting_for_location = State()
     waiting_for_photo = State()
-    waiting_for_leave = State()
 
 def get_teacher_from_excel_bot(jshr: str):
     if not os.path.exists(XODIMLAR_FAYLI): return None, None, None
@@ -351,13 +463,13 @@ def get_teacher_from_excel_bot(jshr: str):
 
 def bot_bugun_kelganmi(jshr):
     bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
-    if os.path.exists(LOG_FILE):
-        with open(LOG_FILE, mode="r", encoding="utf-8") as f:
-            reader = csv.reader(f)
-            next(reader, None)
-            for row in reader:
-                if len(row) >= 6 and row[0].strip() == str(jshr).strip() and row[3].strip() == bugun and "Keldi" in row[5]:
-                    return True
+    if os.path.exists(EXCEL_HISOBOT):
+        df = pd.read_excel(EXCEL_HISOBOT)
+        for _, row in df.iterrows():
+            # PNFL ni xodimlardan qidirib topamiz
+            xodim_topildi = next((x for x in XODIMLAR if str(x.get('pnfl')) == str(jshr) and str(x.get('id')) == str(row.get('ID'))), None)
+            if xodim_topildi and str(row.get('Sana')) == bugun and str(row.get('Kelish_Vaqti')) != "-":
+                return True
     return False
 
 @dp_instance.message(Command("start"))
@@ -425,15 +537,19 @@ async def process_photo_bot(message: Message, state: FSMContext):
     soat, minut = now.hour, now.minute
     is_late = (soat > 8) or (soat == 8 and minut > 30)
     status = "Kechikib keldi ⚠️" if is_late else "O'z vaqtida keldi ✅"
+    
     xodim_temp = next((x for x in XODIMLAR if str(x.get('pnfl')) == str(jshr)), None)
     if xodim_temp:
         davomatni_saqlash(xodim_temp, "KIRISH", time_str, holat_str="Kechikdi ⚠️" if is_late else "Hududda")
+    
     with open(LOG_FILE, mode="a", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([jshr, teacher_name, position, date_str, time_str, status, "Keldi"])
+    
     await state.clear()
     caption_text = f"🟢 <b>KIRISH (Kelish) - {date_str}</b>\n\n👤 <b>F.I.O:</b> {teacher_name}\n📋 <b>Lavozimi:</b> {position}\n⏰ <b>Vaqt:</b> {time_str}\n<b>Holat:</b> {status}"
     await message.answer(f"Rahmat, {teacher_name}! Kelgan vaqtingiz muvaffaqiyatli qayd etildi ✅")
+    
     target_ids = list(ADMIN_IDS_INT)
     if message.from_user.id not in target_ids: target_ids.append(message.from_user.id)
     for admin_id in target_ids:
