@@ -28,6 +28,7 @@ UZB_TZ = ZoneInfo("Asia/Tashkent")
 
 TEHNIKUM_LAT = 38.970790
 TEHNIKUM_LON = 66.706597
+DAVOMAT_MAX_MASOFA = 100  # Qat'iy ruxsat etilgan hudud chegarasi (100 metr)
 
 def xodimlarni_yuklash():
     if os.path.exists(XODIMLAR_FAYLI):
@@ -205,6 +206,7 @@ def admin_panel():
         .badge-keldi { background: #22c55e; padding: 6px 12px; border-radius: 6px; font-weight: bold; }
         .badge-kechikdi { background: #f97316; padding: 6px 12px; border-radius: 6px; font-weight: bold; }
         .badge-chiqdi { background: #ef4444; padding: 6px 12px; border-radius: 6px; font-weight: bold; }
+        .badge-tashqarida { background: #eab308; color: #000; padding: 6px 12px; border-radius: 6px; font-weight: bold; }
         .badge-kelmagan { background: #64748b; padding: 6px 12px; border-radius: 6px; font-weight: bold; }
     </style></head>
     <body><div class="container">
@@ -221,6 +223,7 @@ def admin_panel():
                 <td>{{ r['Ketish_Vaqti'] }}</td>
                 <td>
                     {% if 'Chiqib' in r['Oxirgi_Holat'] %}<span class="badge-chiqdi">{{ r['Oxirgi_Holat'] }}</span>
+                    {% elif 'Tashqarida' in r['Oxirgi_Holat'] %}<span class="badge-tashqarida">{{ r['Oxirgi_Holat'] }}</span>
                     {% elif 'Kechikdi' in r['Oxirgi_Holat'] %}<span class="badge-kechikdi">{{ r['Oxirgi_Holat'] }}</span>
                     {% else %}<span class="badge-keldi">Hududda</span>{% endif %}
                 </td>
@@ -340,19 +343,28 @@ def result():
 
     if action == 'KIRISH':
         is_late = (soat > 8) or (soat == 8 and minut > 30)
-        holat_matn = "Kechikdi ⚠️" if is_late else "Hududda"
-        
-        if is_late:
+        is_out_of_bounds = masofa > DAVOMAT_MAX_MASOFA  # 100 metrdan uzoqmi?
+
+        # Holatni aniqlash
+        if is_out_of_bounds:
+            holat_matn = f"Tashqarida ⚠️ ({int(masofa)}m)"
+            tabrik_matn = f"Diqqat! Siz hududdan tashqaridasiz ({int(masofa)}m)! ⚠️"
+            rang = "#eab308"
+            holat_telegram = f"Holat: <b>DIQQAT! HUDUDDAN TASHQARIDA! ({int(masofa)}m)</b> 🚨"
+        elif is_late:
+            holat_matn = "Kechikdi ⚠️"
             tabrik_matn = "Afsuski, siz kechikdingiz! ⚠️"
             rang = "#f97316"
             holat_telegram = "Holat: Kechikib keldi ⚠️"
         else:
+            holat_matn = "Hududda"
             tabrik_matn = "Tabriklaymiz, siz vaqtida o'tdingiz! 🎉"
             rang = "#22c55e"
             holat_telegram = "Holat: O'z vaqtida keldi ✅"
 
         davomatni_saqlash(xodim, "KIRISH", vaqt_str, holat_str=holat_matn)
         
+        # Adminga yuboriladigan xabar (Siz ko'rsatgan rasm formatida va masofa bilan)
         matn_xabar = f"🟢 <b>KIRISH (Kelish) - {bugun}</b>\n\n👤 <b>F.I.O:</b> {xodim['fame']}\n📋 <b>Lavozimi:</b> {xodim['lavozim']}\n⏰ <b>Vaqt:</b> {vaqt_str}\n{holat_telegram}\n📍 <b>Masofa:</b> {int(masofa)}m"
         telegramga_rasmli_xabar_yuborish(fayl_path, matn_xabar, target_chat_ids=target_chat_ids)
 
@@ -362,7 +374,7 @@ def result():
             body{{font-family:'Segoe UI',sans-serif;background:#0f172a;color:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;}}
             .card{{background:#1e293b;padding:40px 30px;border-radius:20px;text-align:center;max-width:440px;width:100%;box-shadow:0 15px 35px rgba(0,0,0,0.5);box-sizing:border-box;}}
             .profile-img{{width:130px;height:130px;border-radius:50%;object-fit:cover;border:4px solid {rang};margin-bottom:20px;}}
-            h2{{color:{rang};font-size:24px;margin-bottom:10px;}}
+            h2{{color:{rang};font-size:22px;margin-bottom:10px;}}
             p{{color:#94a3b8;font-size:16px;margin:5px 0;}}
             .time-box{{background:#0f172a;padding:14px;border-radius:12px;margin:20px 0;font-size:20px;color:#38bdf8;font-weight:bold;border:1px solid #334155;}}
             .btn{{display:block;width:100%;padding:16px;background:#38bdf8;color:#0f172a;font-weight:bold;font-size:18px;border-radius:12px;text-decoration:none;box-sizing:border-box;}}
@@ -373,7 +385,7 @@ def result():
             <h3 style="font-size:22px;margin:10px 0 5px 0;color:#f8fafc;">{xodim['fame']}</h3>
             <p>{xodim['lavozim']}</p>
             <div class="time-box">⏰ Vaqt: {vaqt_str}</div>
-            <p style="color:#22c55e;font-size:15px;margin-bottom:25px;">Davomatingiz muvaffaqiyatli saqlandi va adminga yuborildi! (Masofa: {int(masofa)}m)</p>
+            <p style="color:#22c55e;font-size:15px;margin-bottom:25px;">Davomatingiz saqlandi va adminga yuborildi! (Masofa: {int(masofa)}m)</p>
             <a href="/" class="btn">Bosh sahifaga qaytish</a>
         </div></body></html>
         """
