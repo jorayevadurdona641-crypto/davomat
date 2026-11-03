@@ -11,7 +11,7 @@ import openpyxl
 app = Flask(__name__)
 app.secret_key = "yakkabog_davomat_maxfiy_kalit"
 
-# --- TELEGRAM BOT TOKENI (Xabarlar adminga borishi uchun) ---
+# --- TELEGRAM BOT TOKENI ---
 TELEGRAM_BOT_TOKEN = "8418617685:AAEeepVkX_wp3opdVUbW0z99bXxWbJQOfmA"
 ADMIN_CHAT_IDS = ["1179846016", "1838498079", "1611805500", "727029645"]
 
@@ -140,17 +140,18 @@ def index():
     return render_template_string('''
     <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Davomat</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .card { background: #1e293b; padding: 30px; border-radius: 16px; width: 100%; max-width: 400px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
-        h2 { color: #38bdf8; margin-bottom: 10px; }
-        .btn { width: 100%; padding: 15px; border: none; border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer; text-decoration: none; color: white; display: block; margin-bottom: 15px; box-sizing: border-box; }
-        .btn-kirish { background: #22c55e; }
-        .btn-chiqish { background: #ef4444; }
-        .btn-admin { background: #334155; font-size: 14px; padding: 10px; }
+        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { background: #1e293b; padding: 40px 30px; border-radius: 20px; width: 100%; max-width: 440px; text-align: center; box-shadow: 0 15px 35px rgba(0,0,0,0.5); box-sizing: border-box; }
+        h2 { color: #38bdf8; font-size: 26px; margin-bottom: 10px; }
+        p { color: #94a3b8; font-size: 16px; margin-bottom: 25px; }
+        .btn { width: 100%; padding: 18px; border: none; border-radius: 14px; font-size: 18px; font-weight: bold; cursor: pointer; text-decoration: none; color: white; display: block; margin-bottom: 18px; box-sizing: border-box; }
+        .btn-kirish { background: #22c55e; font-size: 20px; }
+        .btn-chiqish { background: #ef4444; font-size: 20px; }
+        .btn-admin { background: #334155; font-size: 15px; padding: 14px; color: #cbd5e1; }
     </style></head>
     <body><div class="card">
         <h2>🏢 Davomat Tizimi</h2>
-        <p style="color:#94a3b8;margin-bottom:20px;">Amal turini tanlang:</p>
+        <p>Amal turini tanlang:</p>
         <a href="/select-employee?action=KIRISH" class="btn btn-kirish">🟢 KELISH (Kirish)</a>
         <a href="/select-employee?action=CHIQISH" class="btn btn-chiqish">🔴 KETISH (Chiqish)</a>
         <a href="/admin-login" class="btn btn-admin">🛡️ Admin Kuzatuv Paneli</a>
@@ -167,18 +168,18 @@ def admin_login():
         else:
             error = "Parol noto'g'ri! (7777)"
     return render_template_string('''
-    <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><title>Admin Kirish</title>
+    <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Admin Kirish</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .card { background: #1e293b; padding: 30px; border-radius: 16px; width: 100%; max-width: 360px; text-align: center; }
-        input[type="password"] { width: 100%; padding: 12px; border-radius: 8px; background: #0f172a; color: #fff; border: 1px solid #334155; margin-bottom: 15px; text-align: center; }
-        .btn { width: 100%; padding: 12px; border: none; border-radius: 8px; background: #38bdf8; color: #0f172a; font-weight: bold; cursor: pointer; }
+        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { background: #1e293b; padding: 40px 30px; border-radius: 20px; width: 100%; max-width: 380px; text-align: center; box-sizing: border-box; }
+        input[type="password"] { width: 100%; padding: 15px; border-radius: 12px; background: #0f172a; color: #fff; border: 1px solid #334155; margin-bottom: 20px; font-size: 18px; text-align: center; box-sizing: border-box; }
+        .btn { width: 100%; padding: 15px; border: none; border-radius: 12px; background: #38bdf8; color: #0f172a; font-size: 18px; font-weight: bold; cursor: pointer; }
     </style></head>
     <body><div class="card">
-        <h3>🛡️ Admin Paneli</h3>
-        {% if error %}<p style="color:red;">{{ error }}</p>{% endif %}
+        <h3 style="color: #38bdf8; font-size: 22px; margin-top:0;">🛡️ Admin Paneli</h3>
+        {% if error %}<p style="color:red; font-size:15px;">{{ error }}</p>{% endif %}
         <form method="POST"><input type="password" name="parol" placeholder="••••" required autofocus><button type="submit" class="btn">Kirish</button></form>
-        <a href="/" style="display:block;margin-top:15px;color:#94a3b8;text-decoration:none;">⟵ Bosh sahifaga</a>
+        <a href="/" style="display:block;margin-top:20px;color:#94a3b8;text-decoration:none;font-size:15px;">⟵ Bosh sahifaga</a>
     </div></body></html>
     ''', error=error)
 
@@ -194,23 +195,23 @@ def admin_panel():
     kelmaganlar = [x for x in XODIMLAR if str(x['id']) not in kelgan_ids]
 
     return render_template_string('''
-    <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><title>Admin Paneli</title>
+    <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Admin Paneli</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #fff; padding: 20px; }
-        .container { max-width: 950px; margin: auto; background: #1e293b; padding: 25px; border-radius: 16px; }
-        h2 { color: #38bdf8; text-align: center; }
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 14px; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #334155; }
+        .container { max-width: 950px; margin: auto; background: #1e293b; padding: 30px; border-radius: 20px; }
+        h2 { color: #38bdf8; text-align: center; font-size: 24px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 15px; }
+        th, td { padding: 14px; text-align: left; border-bottom: 1px solid #334155; }
         th { background: #0f172a; color: #38bdf8; }
-        .badge-keldi { background: #22c55e; padding: 4px 8px; border-radius: 4px; }
-        .badge-kechikdi { background: #f97316; padding: 4px 8px; border-radius: 4px; }
-        .badge-chiqdi { background: #ef4444; padding: 4px 8px; border-radius: 4px; }
-        .badge-kelmagan { background: #64748b; padding: 4px 8px; border-radius: 4px; }
+        .badge-keldi { background: #22c55e; padding: 6px 12px; border-radius: 6px; font-weight: bold; }
+        .badge-kechikdi { background: #f97316; padding: 6px 12px; border-radius: 6px; font-weight: bold; }
+        .badge-chiqdi { background: #ef4444; padding: 6px 12px; border-radius: 6px; font-weight: bold; }
+        .badge-kelmagan { background: #64748b; padding: 6px 12px; border-radius: 6px; font-weight: bold; }
     </style></head>
     <body><div class="container">
         <h2>🛡️ Bugungi Xodimlar Davomati ({{ bugun }})</h2>
-        <a href="/" style="color:#38bdf8; text-decoration:none;">⟵ Bosh sahifa</a>
-        <h3 style="color:#38bdf8; margin-top:20px;">✅ Kelganlar</h3>
+        <a href="/" style="color:#38bdf8; text-decoration:none; font-size:16px; font-weight:bold;">⟵ Bosh sahifa</a>
+        <h3 style="color:#38bdf8; margin-top:25px; font-size:18px;">✅ Kelganlar</h3>
         <table>
             <tr><th>F.I.O</th><th>Lavozimi</th><th>Kelish Vaqti</th><th>Ketish Vaqti</th><th>Holati</th></tr>
             {% for _, r in data.iterrows() %}
@@ -230,7 +231,7 @@ def admin_panel():
             {% endfor %}
         </table>
 
-        <h3 style="color:#f43f5e; margin-top:30px;">❌ Kelmaganlar</h3>
+        <h3 style="color:#f43f5e; margin-top:35px; font-size:18px;">❌ Kelmaganlar</h3>
         <table>
             <tr><th>F.I.O</th><th>Lavozimi</th><th>Holati</th></tr>
             {% for x in kelmaganlar %}
@@ -248,22 +249,24 @@ def select_employee():
     global XODIMLAR
     XODIMLAR = xodimlarni_yuklash()
     return render_template_string('''
-    <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><title>Xodim</title>
-    <style>body{font-family:sans-serif;background:#0f172a;color:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;}
-    .card{background:#1e293b;padding:25px;border-radius:16px;width:100%;max-width:400px;text-align:center;box-sizing:border-box;}
-    input, select {width:100%;padding:12px;border-radius:8px;background:#0f172a;color:#fff;border:1px solid #334155;margin-bottom:15px;box-sizing:border-box;}
-    .btn{width:100%;padding:12px;border:none;border-radius:8px;background:#3b82f6;color:white;font-weight:bold;cursor:pointer;}</style></head>
+    <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Xodim</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { background: #1e293b; padding: 30px; border-radius: 20px; width: 100%; max-width: 420px; text-align: center; box-sizing: border-box; }
+        input, select { width: 100%; padding: 15px; border-radius: 12px; background: #0f172a; color: #fff; border: 1px solid #334155; margin-bottom: 20px; font-size: 16px; box-sizing: border-box; }
+        .btn { width: 100%; padding: 16px; border: none; border-radius: 12px; background: #3b82f6; color: white; font-size: 18px; font-weight: bold; cursor: pointer; }
+    </style></head>
     <body><div class="card">
-        <h3 style="color:#38bdf8;">Xodimni tanlang</h3>
-        <p style="color:#94a3b8;font-size:13px;">Harakat: <b>{{ action }}</b></p>
+        <h3 style="color:#38bdf8; font-size: 22px; margin-top:0;">Xodimni tanlang</h3>
+        <p style="color:#94a3b8; font-size: 15px;">Harakat: <b>{{ action }}</b></p>
         <form action="/verify" method="GET">
             <input type="hidden" name="action" value="{{ action }}">
             <select name="xodim_id" required><option value="" disabled selected>-- Ism familiya --</option>
             {% for x in xodimlar %}<option value="{{ x.id }}">{{ x.fame }} ({{ x.lavozim }})</option>{% endfor %}</select>
-            <div style="text-align:left;margin-bottom:15px;"><label style="font-size:13px;color:#38bdf8;">📸 Selfie:</label>
-            <input type="file" name="emp_photo" accept="image/*" capture="user" required style="font-size:12px;margin-top:5px;color:#fff;"></div>
+            <div style="text-align:left;margin-bottom:20px;"><label style="font-size:15px;color:#38bdf8;display:block;margin-bottom:8px;">📸 Selfie rasm:</label>
+            <input type="file" name="emp_photo" accept="image/*" capture="user" required style="font-size: 14px; color:#fff;"></div>
             <button type="submit" class="btn">Tasdiqlash</button>
-        </form><a href="/" style="display:block;margin-top:15px;color:#94a3b8;text-decoration:none;">⟵ Qaytish</a>
+        </form><a href="/" style="display:block;margin-top:20px;color:#94a3b8;text-decoration:none;font-size:15px;">⟵ Qaytish</a>
     </div></body></html>
     ''', action=action, xodimlar=XODIMLAR)
 
@@ -274,10 +277,11 @@ def verify():
     xodim = next((x for x in XODIMLAR if str(x['id']) == str(xodim_id)), None)
     if not xodim: return "Xodim topilmadi!"
     return render_template_string('''
-    <!DOCTYPE html><html lang="uz"><head><title>GPS</title></head>
-    <body style="background:#0f172a;color:#fff;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;font-family:sans-serif;">
-        <div style="background:#1e293b;padding:30px;border-radius:16px;text-align:center;">
-            <h3>Lokatsiya aniqlanmoqda...</h3>
+    <!DOCTYPE html><html lang="uz"><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>GPS</title></head>
+    <body style="background:#0f172a;color:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;font-family:sans-serif;">
+        <div style="background:#1e293b;padding:40px;border-radius:20px;text-align:center;">
+            <h3 style="font-size: 22px; color: #38bdf8;">Lokatsiya aniqlanmoqda...</h3>
+            <p style="color:#94a3b8; font-size: 16px;">Iltimos, GPS ga ruxsat bering...</p>
             <form id="geoForm" action="/result" method="POST" enctype="multipart/form-data"><input type="hidden" name="action" value="{{ action }}"><input type="hidden" name="xodim_id" value="{{ xodim.id }}"><input type="hidden" name="lat" id="lat"><input type="hidden" name="lon" id="lon"></form>
         </div>
         <script>
@@ -301,7 +305,18 @@ def result():
 
     masofa = hisobla_masofa(lat, lon, TEHNIKUM_LAT, TEHNIKUM_LON)
     if masofa > DAVOMAT_MAX_MASOFA:
-        return f"<h2 style='color:red;text-align:center;margin-top:50px;'>❌ Masofa xatosi! Texnikumdan {int(masofa)} metr uzoqdasiz ({DAVOMAT_MAX_MASOFA}m ichida bo'lishi kerak). <a href='/'>Qaytish</a></h2>"
+        return f"""
+        <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Masofa xatosi</title>
+        <style>body{{font-family:'Segoe UI',sans-serif;background:#0f172a;color:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;}}
+        .card{{background:#1e293b;padding:40px 30px;border-radius:20px;text-align:center;max-width:420px;width:100%;box-shadow:0 15px 35px rgba(0,0,0,0.5);box-sizing:border-box;}}
+        h2{{color:#ef4444;font-size:24px;margin-bottom:15px;}}p{{color:#94a3b8;font-size:16px;margin-bottom:25px;}}
+        .btn{{display:block;width:100%;padding:16px;background:#38bdf8;color:#0f172a;font-weight:bold;font-size:18px;border-radius:12px;text-decoration:none;box-sizing:border-box;}}</style></head>
+        <body><div class="card">
+            <h2>❌ Masofa xatosi!</h2>
+            <p>Siz texnikumdan <b>{int(masofa)} metr</b> uzoqdasiz. Davomat faqat {DAVOMAT_MAX_MASOFA} metr ichida qabul qilinadi.</p>
+            <a href="/" class="btn">Bosh sahifaga qaytish</a>
+        </div></body></html>
+        """
 
     bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
     fayl_nomi = f"xodim_{xodim['id']}_{bugun}_{datetime.now(UZB_TZ).strftime('%H%M%S')}.jpg"
@@ -324,19 +339,68 @@ def result():
     if action == 'KIRISH':
         is_late = (soat > 8) or (soat == 8 and minut > 30)
         holat_matn = "Kechikdi ⚠️" if is_late else "Hududda"
-        kechikish_statusi = "<b>Holat:</b> Kechikib keldi ⚠️" if is_late else "<b>Holat:</b> O'z vaqtida keldi ✅"
         
+        if is_late:
+            tabrik_matn = "Afsuski, siz kechikdingiz! ⚠️"
+            rang = "#f97316"
+        else:
+            tabrik_matn = "Tabriklaymiz, siz vaqtida o'tdingiz! 🎉"
+            rang = "#22c55e"
+
+        kechikish_statusi = "<b>Holat:</b> Kechikib keldi ⚠️" if is_late else "<b>Holat:</b> O'z vaqtida keldi ✅"
         davomatni_saqlash(xodim, "KIRISH", vaqt_str, holat_str=holat_matn)
         
         matn_xabar = f"🟢 <b>KIRISH (Kelish) - {bugun}</b>\n\n👤 <b>F.I.O:</b> {xodim['fame']}\n📋 <b>Lavozimi:</b> {xodim['lavozim']}\n⏰ <b>Vaqt:</b> {vaqt_str}\n{kechikish_statusi}\n📍 <b>Masofa:</b> {int(masofa)}m"
         telegramga_rasmli_xabar_yuborish(fayl_path, matn_xabar, target_chat_ids=target_chat_ids)
+
+        return f"""
+        <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Natija</title>
+        <style>
+            body{{font-family:'Segoe UI',sans-serif;background:#0f172a;color:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;}}
+            .card{{background:#1e293b;padding:40px 30px;border-radius:20px;text-align:center;max-width:440px;width:100%;box-shadow:0 15px 35px rgba(0,0,0,0.5);box-sizing:border-box;}}
+            .profile-img{{width:130px;height:130px;border-radius:50%;object-fit:cover;border:4px solid {rang};margin-bottom:20px;}}
+            h2{{color:{rang};font-size:24px;margin-bottom:10px;}}
+            p{{color:#94a3b8;font-size:16px;margin:5px 0;}}
+            .time-box{{background:#0f172a;padding:14px;border-radius:12px;margin:20px 0;font-size:20px;color:#38bdf8;font-weight:bold;border:1px solid #334155;}}
+            .btn{{display:block;width:100%;padding:16px;background:#38bdf8;color:#0f172a;font-weight:bold;font-size:18px;border-radius:12px;text-decoration:none;box-sizing:border-box;}}
+        </style></head>
+        <body><div class="card">
+            <h2>{tabrik_matn}</h2>
+            {"<img src='" + xodim['photo_url'] + "' class='profile-img'>" if xodim['photo_url'] else ""}
+            <h3 style="font-size:22px;margin:10px 0 5px 0;color:#f8fafc;">{xodim['fame']}</h3>
+            <p>{xodim['lavozim']}</p>
+            <div class="time-box">⏰ Vaqt: {vaqt_str}</div>
+            <p style="color:#22c55e;font-size:15px;margin-bottom:25px;">Davomatingiz muvaffaqiyatli saqlandi va adminga yuborildi!</p>
+            <a href="/" class="btn">Bosh sahifaga qaytish</a>
+        </div></body></html>
+        """
 
     elif action == 'CHIQISH':
         davomatni_saqlash(xodim, "CHIQISH", vaqt_str, holat_str="Chiqib ketdi ❌")
         matn_xabar = f"🔴 <b>CHIQISH (Ketish) - {bugun}</b>\n\n👤 <b>F.I.O:</b> {xodim['fame']}\n📋 <b>Lavozimi:</b> {xodim['lavozim']}\n⏰ <b>Vaqt:</b> {vaqt_str}\n<b>Holat:</b> Ishdan ketdi 🔴\n📍 <b>Masofa:</b> {int(masofa)}m"
         telegramga_rasmli_xabar_yuborish(fayl_path, matn_xabar, target_chat_ids=target_chat_ids)
 
-    return f"<h2 style='color:#22c55e;text-align:center;margin-top:50px;'>✅ Muvaffaqiyatli saqlandi va adminga yuborildi! Vaqt: {vaqt_str}. <a href='/'>Bosh sahifa</a></h2>"
+        return f"""
+        <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Natija</title>
+        <style>
+            body{{font-family:'Segoe UI',sans-serif;background:#0f172a;color:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;}}
+            .card{{background:#1e293b;padding:40px 30px;border-radius:20px;text-align:center;max-width:440px;width:100%;box-shadow:0 15px 35px rgba(0,0,0,0.5);box-sizing:border-box;}}
+            .profile-img{{width:130px;height:130px;border-radius:50%;object-fit:cover;border:4px solid #ef4444;margin-bottom:20px;}}
+            h2{{color:#ef4444;font-size:24px;margin-bottom:10px;}}
+            p{{color:#94a3b8;font-size:16px;margin:5px 0;}}
+            .time-box{{background:#0f172a;padding:14px;border-radius:12px;margin:20px 0;font-size:20px;color:#38bdf8;font-weight:bold;border:1px solid #334155;}}
+            .btn{{display:block;width:100%;padding:16px;background:#38bdf8;color:#0f172a;font-weight:bold;font-size:18px;border-radius:12px;text-decoration:none;box-sizing:border-box;}}
+        </style></head>
+        <body><div class="card">
+            <h2>🔴 Ketish qayd etildi</h2>
+            {"<img src='" + xodim['photo_url'] + "' class='profile-img'>" if xodim['photo_url'] else ""}
+            <h3 style="font-size:22px;margin:10px 0 5px 0;color:#f8fafc;">{xodim['fame']}</h3>
+            <p>{xodim['lavozim']}</p>
+            <div class="time-box">⏰ Vaqt: {vaqt_str}</div>
+            <p style="color:#ef4444;font-size:15px;margin-bottom:25px;">Ishdan ketganingiz muvaffaqiyatli saqlandi va adminga yuborildi!</p>
+            <a href="/" class="btn">Bosh sahifaga qaytish</a>
+        </div></body></html>
+        """
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)
