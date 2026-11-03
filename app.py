@@ -11,8 +11,8 @@ import openpyxl
 app = Flask(__name__)
 app.secret_key = "yakkabog_davomat_maxfiy_kalit"
 
-# --- TELEGRAM BOT TOKENI ---
-TELEGRAM_BOT_TOKEN = "8418617685:AAEeepVkX_wp3opdVUbW0z99bXxWbJQOfmA"
+# --- YANGI TELEGRAM BOT TOKENI ---
+TELEGRAM_BOT_TOKEN = "9241880191:AAEGdwBHjqdBmqLv4hOrL8bIvJl2bRAV8QE"
 ADMIN_CHAT_IDS = ["1179846016", "1838498079", "1611805500", "727029645"]
 
 EXCEL_HISOBOT = "davomat_hisobot.xlsx"
@@ -28,8 +28,8 @@ UZB_TZ = ZoneInfo("Asia/Tashkent")
 
 TEHNIKUM_LAT = 38.970790
 TEHNIKUM_LON = 66.706597
-DAVOMAT_MAX_MASOFA = 100     # Qat'iy davomat o'tish masofasi (100 metr)
-OGOHLANTIRISH_MASOFA = 500   # Hududdan chiqib ketish masofasi (500 metr)
+DAVOMAT_MAX_MASOFA = 100     
+OGOHLANTIRISH_MASOFA = 500   
 
 def xodimlarni_yuklash():
     if os.path.exists(XODIMLAR_FAYLI):
@@ -75,6 +75,15 @@ def bazani_tekshir():
             writer.writerow(["PNFL", "F.I.Sh.", "Lavozim", "Sana", "Vaqt", "Holati", "Oxirgi_Holat"])
 
 bazani_tekshir()
+
+def bugun_kelganmi(xodim_id):
+    bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
+    if os.path.exists(EXCEL_HISOBOT):
+        df = pd.read_excel(EXCEL_HISOBOT)
+        mavjud = df[(df["ID"] == xodim_id) & (df["Sana"] == bugun) & (df["Kelish_Vaqti"] != "-")]
+        if not mavjud.empty:
+            return True
+    return False
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
@@ -286,6 +295,22 @@ def verify():
     xodim_id = request.args.get('xodim_id')
     xodim = next((x for x in XODIMLAR if str(x['id']) == str(xodim_id)), None)
     if not xodim: return "Xodim topilmadi!"
+
+    # Agar KIRISH qilmoqchi bo'lsa va bugun allaqachon kelgan bo'lsa, bloklaymiz
+    if action == 'KIRISH' and bugun_kelganmi(xodim['id']):
+        return f"""
+        <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Xatolik</title>
+        <style>body{{font-family:'Segoe UI',sans-serif;background:#0f172a;color:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;}}
+        .card{{background:#1e293b;padding:40px 30px;border-radius:20px;text-align:center;max-width:420px;width:100%;box-shadow:0 15px 35px rgba(0,0,0,0.5);box-sizing:border-box;}}
+        h2{{color:#ef4444;font-size:24px;margin-bottom:15px;}}p{{color:#94a3b8;font-size:16px;margin-bottom:25px;}}
+        .btn{{display:block;width:100%;padding:16px;background:#38bdf8;color:#0f172a;font-weight:bold;font-size:18px;border-radius:12px;text-decoration:none;box-sizing:border-box;}}</style></head>
+        <body><div class="card">
+            <h2>⚠️ Allaqachon o'tgansiz!</h2>
+            <p><b>{xodim['fame']}</b>, siz bugun allaqachon davomatdan o'tgansiz. Qayta o'tish mumkin emas!</p>
+            <a href="/" class="btn">Bosh sahifaga qaytish</a>
+        </div></body></html>
+        """
+
     return render_template_string('''
     <!DOCTYPE html><html lang="uz"><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>GPS</title></head>
     <body style="background:#0f172a;color:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;font-family:sans-serif;">
@@ -313,9 +338,11 @@ def result():
     xodim = next((x for x in XODIMLAR if str(x['id']) == str(xodim_id)), None)
     if not xodim: return "Xodim topilmadi!"
 
+    if action == 'KIRISH' and bugun_kelganmi(xodim['id']):
+        return "Siz bugun allaqachon davomatdan o'tgansiz!"
+
     masofa = hisobla_masofa(lat, lon, TEHNIKUM_LAT, TEHNIKUM_LON)
 
-    # Qat'iy cheklov: 100 metrdan oshsa davomat qabul qilinmaydi
     if masofa > DAVOMAT_MAX_MASOFA:
         return f"""
         <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Masofa xatosi</title>
@@ -351,7 +378,6 @@ def result():
     if action == 'KIRISH':
         is_late = (soat > 8) or (soat == 8 and minut > 30)
 
-        # 500 metrdan oshsa hududdan chiqib ketgan deb hisoblanadi
         if masofa > OGOHLANTIRISH_MASOFA:
             holat_matn = f"Hududdan chiqib ketgan 🚨 ({int(masofa)}m)"
             tabrik_matn = f"Diqqat! Siz hududdan chiqib ketgansiz ({int(masofa)}m)! ⚠️"
