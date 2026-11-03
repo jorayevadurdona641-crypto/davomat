@@ -11,7 +11,7 @@ import openpyxl
 app = Flask(__name__)
 app.secret_key = "yakkabog_davomat_maxfiy_kalit"
 
-# --- TELEGRAM BOT TOKENI VA ADMIN ID LAR ---
+# --- TELEGRAM BOT TOKENI ---
 TELEGRAM_BOT_TOKEN = "8418617685:AAEeepVkX_wp3opdVUbW0z99bXxWbJQOfmA"
 ADMIN_CHAT_IDS = ["1179846016", "1838498079", "1611805500", "727029645"]
 
@@ -390,7 +390,7 @@ def result():
             <h3 style="font-size:22px;margin:10px 0 5px 0;color:#f8fafc;">{xodim['fame']}</h3>
             <p>{xodim['lavozim']}</p>
             <div class="time-box">⏰ Vaqt: {vaqt_str}</div>
-            <p style="color:#22c55e;font-size:15px;margin-bottom:25px;">Davomatingiz saqlandi va adminga yuborildi! (Masofa: {int(masofa)}m)</p>
+            <p style="color:#22c55e;font-size:15px;margin-bottom:25px;">Davomatingiz saqlandi va botga yuborildi! (Masofa: {int(masofa)}m)</p>
             <a href="/" class="btn">Bosh sahifaga qaytish</a>
         </div></body></html>
         """
@@ -417,7 +417,7 @@ def result():
             <h3 style="font-size:22px;margin:10px 0 5px 0;color:#f8fafc;">{xodim['fame']}</h3>
             <p>{xodim['lavozim']}</p>
             <div class="time-box">⏰ Vaqt: {vaqt_str}</div>
-            <p style="color:#ef4444;font-size:15px;margin-bottom:25px;">Ishdan ketganingiz muvaffaqiyatli saqlandi va adminga yuborildi! (Masofa: {int(masofa)}m)</p>
+            <p style="color:#ef4444;font-size:15px;margin-bottom:25px;">Ishdan ketganingiz muvaffaqiyatli saqlandi va botga yuborildi! (Masofa: {int(masofa)}m)</p>
             <a href="/" class="btn">Bosh sahifaga qaytish</a>
         </div></body></html>
         """
