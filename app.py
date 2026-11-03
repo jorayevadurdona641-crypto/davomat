@@ -18,7 +18,7 @@ app = Flask(__name__)
 app.secret_key = "yakkabog_davomat_maxfiy_kalit"
 
 # --- TELEGRAM BOT VA WEB UMUMIY SOZLAMALARI ---
-TELEGRAM_BOT_TOKEN = "8418617685:AAFWyhwh3XiuwaqXyDqtK26zQz002ub30XY"
+TELEGRAM_BOT_TOKEN = "8418617685:AAFGJtYPT-BLYXJ_uXSC2LmJSdbw2IPTfDQ"
 ADMIN_CHAT_IDS = ["1179846016", "1838498079", "1611805500", "727029645"]
 ADMIN_IDS_INT = [1179846016, 1838498079, 1611805500, 727029645]
 ADMIN_PAROL = "7777"
@@ -569,7 +569,6 @@ def set_webhook():
     try: requests.get(url)
     except Exception as e: print("Webhookni o'rnatishda xatolik:", e)
 
-# Webhook ni avtomatik o'rnatish uchun
 set_webhook()
 
 if __name__ == '__main__':
