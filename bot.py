@@ -147,7 +147,6 @@ async def process_location_bot(message: Message, state: FSMContext):
         await state.clear()
         return
 
-    # Masofani holat uchun saqlab qo'yamiz
     await state.update_data(distance=int(distance))
 
     await state.set_state(AttendanceState.waiting_for_photo)
@@ -189,7 +188,6 @@ async def process_photo_bot(message: Message, state: FSMContext):
 
     await state.clear()
     
-    # Rasmda ko'rsatilgan formatga to'liq moslangan xabarlar shabloni:
     caption_text = (
         f"🟢 <b>KIRISH (Kelish) - {date_str}</b>\n\n"
         f"👤 <b>F.I.O:</b> {teacher_name}\n"
