@@ -44,34 +44,40 @@ def get_teacher_from_excel_bot(jshr: str):
     if not os.path.exists(XODIMLAR_FAYLI):
         return None, None, None
     try:
-        wb = openpyxl.load_workbook(XODIMLAR_FAYLI, data_only=True)
-        ws = wb.active
+        df = pd.read_excel(XODIMLAR_FAYLI, sheet_name=0, skiprows=2)
         kerak_emas_sozlar = ["qorovul", "farrosh", "soatbay"]
-        for row in ws.iter_rows(min_row=4, values_only=True):
-            if row and len(row) >= 5:
-                row_name = str(row[1]).strip() if row[1] is not None else ""
-                row_position = str(row[2]).strip() if row[2] is not None else ""
-                row_tg = str(row[3]).strip() if row[3] is not None else ""
-                row_pnfl = str(row[4]).strip() if row[4] is not None else ""
-                if row_pnfl == str(jshr).strip():
-                    pos_lower = row_position.lower()
-                    for soz in kerak_emas_sozlar:
-                        if soz in pos_lower:
-                            return "EXCLUDED", "EXCLUDED", None
-                    return row_name, row_position, row_tg
+        
+        for index, row in df.iterrows():
+            fio = str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else ""
+            lavozim = str(row.iloc[2]).strip() if pd.notna(row.iloc[2]) else "O'qituvchi"
+            tg_id = str(row.iloc[3]).strip() if len(row) > 3 and pd.notna(row.iloc[3]) else ""
+            pnfl = str(row.iloc[4]).strip() if len(row) > 4 and pd.notna(row.iloc[4]) else ""
+            
+            # PNFL ni to'g'ri solishtirish (oxiridagi .0 larni tozalash)
+            clean_input_jshr = str(jshr).strip().split('.')[0]
+            clean_row_pnfl = str(pnfl).strip().split('.')[0]
+            
+            if clean_row_pnfl == clean_input_jshr and fio and fio != "nan":
+                lavozim_kichik = lavozim.lower()
+                for soz in kerak_emas_sozlar:
+                    if soz in lavozim_kichik:
+                        return "EXCLUDED", "EXCLUDED", None
+                return fio, lavozim, tg_id
     except Exception as e:
         print("Excelni botda o'qishda xatolik:", e)
     return None, None, None
 
 def bot_bugun_kelganmi(jshr):
     bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
-    if os.path.exists(LOG_FILE):
-        with open(LOG_FILE, mode="r", encoding="utf-8") as f:
-            reader = csv.reader(f)
-            next(reader, None)
-            for row in reader:
-                if len(row) >= 6 and row[0].strip() == str(jshr).strip() and row[3].strip() == bugun and "Keldi" in row[5]:
-                    return True
+    if os.path.exists(EXCEL_HISOBOT):
+        try:
+            df = pd.read_excel(EXCEL_HISOBOT)
+            clean_jshr = str(jshr).strip().split('.')[0]
+            mavjud = df[(df["ID"].astype(str).str.split('.').str[0] == clean_jshr) & (df["Sana"] == bugun) & (df["Kelish_Vaqti"] != "-")]
+            if not mavjud.empty:
+                return True
+        except Exception as e:
+            print("Tekshirishda xatolik:", e)
     return False
 
 def davomatni_saqlash_bot(jshr, teacher_name, position, vaqt_str, holat_str):
@@ -110,18 +116,12 @@ async def process_jshr_bot(message: Message, state: FSMContext):
         await message.answer("❌ Kechirasiz, lavozimingiz kiritilmagan.")
         await state.clear()
     elif teacher_name:
-        current_user_id = str(message.from_user.id)
-        if excel_tg_id and excel_tg_id != "nan" and excel_tg_id != "":
-            if str(excel_tg_id) != current_user_id:
-                await message.answer("❌ <b>Xatolik!</b> Bu PNFL boshqa Telegram akkauntga biriktirilgan.", parse_mode="HTML")
-                await state.clear()
-                return
         await state.update_data(jshr=jshr, teacher_name=teacher_name, position=position)
         kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📍 Geolokatsiyani yuborish", request_location=True)]], resize_keyboard=True, one_time_keyboard=True)
         await state.set_state(AttendanceState.waiting_for_location)
         await message.answer(f"Salom, <b>{teacher_name}</b> ({position})! Lokatsiyangizni yuboring:", reply_markup=kb, parse_mode="HTML")
     else:
-        await message.answer("Bunday PNFL (JSHR) bazadan topilmadi. Qaytadan kiriting:")
+        await message.answer("❌ Bunday PNFL (JSHR) bazadan topilmadi. Qaytadan to'g'ri kiriting:")
 
 @dp.message(AttendanceState.waiting_for_location, F.location)
 async def process_location_bot(message: Message, state: FSMContext):
@@ -142,7 +142,6 @@ async def process_location_bot(message: Message, state: FSMContext):
         return
 
     await state.update_data(distance=int(distance))
-
     await state.set_state(AttendanceState.waiting_for_photo)
     await message.answer("Lokatsiya tasdiqlandi ✅ Endi davomat uchun o'z <b>rasmingizni (selfie)</b> yuboring:", parse_mode="HTML", reply_markup=None)
 
