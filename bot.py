@@ -12,7 +12,7 @@ from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 
 # --- SOZLAMALAR ---
-TELEGRAM_BOT_TOKEN = "8418617685:AAEeepVkX_wp3opdVUbW0z99bXxWbJQOfmA"
+TELEGRAM_BOT_TOKEN = "9241880191:AAEGdwBHjqdBmqLv4hOrL8bIvJl2bRAV8QE"
 ADMIN_IDS_INT = [1179846016, 1838498079, 1611805500, 727029645]
 
 EXCEL_HISOBOT = "davomat_hisobot.xlsx"
