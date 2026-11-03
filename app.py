@@ -11,7 +11,7 @@ import openpyxl
 app = Flask(__name__)
 app.secret_key = "yakkabog_davomat_maxfiy_kalit"
 
-# --- YANGI TELEGRAM BOT TOKENI ---
+# --- TELEGRAM BOT TOKENI ---
 TELEGRAM_BOT_TOKEN = "9241880191:AAEGdwBHjqdBmqLv4hOrL8bIvJl2bRAV8QE"
 ADMIN_CHAT_IDS = ["1179846016", "1838498079", "1611805500", "727029645"]
 
@@ -257,22 +257,99 @@ def select_employee():
         body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
         .card { background: #1e293b; padding: 30px; border-radius: 20px; width: 100%; max-width: 420px; text-align: center; box-sizing: border-box; }
         input[type="text"], select { width: 100%; padding: 15px; border-radius: 12px; background: #0f172a; color: #fff; border: 1px solid #334155; margin-bottom: 20px; font-size: 16px; box-sizing: border-box; }
-        .btn { width: 100%; padding: 16px; border: none; border-radius: 12px; background: #3b82f6; color: white; font-size: 18px; font-weight: bold; cursor: pointer; }
+        .btn { width: 100%; padding: 16px; border: none; border-radius: 12px; background: #3b82f6; color: white; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        video, canvas { width: 100%; border-radius: 12px; margin-bottom: 15px; background: #000; }
     </style></head>
     <body><div class="card">
-        <h3 style="color:#38bdf8; font-size: 22px; margin-top:0;">Xodimni qidirish va tanlash</h3>
+        <h3 style="color:#38bdf8; font-size: 22px; margin-top:0;">Xodimni tanlash va Selfie</h3>
         <p style="color:#94a3b8; font-size: 15px;">Harakat: <b>{{ action }}</b></p>
-        <form action="/verify" method="GET">
-            <input type="hidden" name="action" value="{{ action }}">
-            <input type="text" id="searchInput" placeholder="🔍 Ism yoki familiyani yozib qidiring..." onkeyup="filterEmployees()">
-            <select name="xodim_id" id="employeeSelect" required><option value="" disabled selected>-- Ism familiyani tanlang --</option>
-            {% for x in xodimlar %}<option value="{{ x.id }}" data-name="{{ x.fame | lower }}">{{ x.fame }} ({{ x.lavozim }})</option>{% endfor %}</select>
-            <div style="text-align:left;margin-bottom:20px;"><label style="font-size:15px;color:#38bdf8;display:block;margin-bottom:8px;">📸 Selfie rasm:</label>
-            <input type="file" name="emp_photo" accept="image/*" capture="user" required style="font-size: 14px; color:#fff;"></div>
-            <button type="submit" class="btn">Tasdiqlash</button>
-        </form><a href="/" style="display:block;margin-top:20px;color:#94a3b8;text-decoration:none;font-size:15px;">⟵ Qaytish</a>
+        
+        <input type="text" id="searchInput" placeholder="🔍 Ism yoki familiyani yozib qidiring..." onkeyup="filterEmployees()">
+        <select id="employeeSelect" required><option value="" disabled selected>-- Ism familiyani tanlang --</option>
+        {% for x in xodimlar %}<option value="{{ x.id }}" data-name="{{ x.fame | lower }}">{{ x.fame }} ({{ x.lavozim }})</option>{% endfor %}</select>
+
+        <div style="text-align:left; margin-bottom:10px;">
+            <label style="font-size:15px;color:#38bdf8;display:block;margin-bottom:8px;">📸 Jonli kamera (Selfie):</label>
+            <video id="video" autoplay playsinline></video>
+            <canvas id="canvas" style="display:none;"></canvas>
+            <button type="button" id="snap" class="btn" style="background:#22c55e;">📸 Suratga olish</button>
+        </div>
+
+        <button type="button" id="submitBtn" class="btn" style="background:#64748b; cursor:not-allowed;" disabled>Tasdiqlash va yuborish</button>
+        <a href="/" style="display:block;margin-top:20px;color:#94a3b8;text-decoration:none;font-size:15px;">⟵ Qaytish</a>
     </div>
+    
     <script>
+        let video = document.getElementById('video');
+        let canvas = document.getElementById('canvas');
+        let snap = document.getElementById('snap');
+        let submitBtn = document.getElementById('submitBtn');
+        let capturedBlob = null;
+
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false })
+            .then(stream => { video.srcObject = stream; })
+            .catch(err => { alert("Kameraga ruxsat berilmadi yoki kamera topilmadi!"); });
+
+        snap.addEventListener('click', function() {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            let ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            canvas.toBlob(blob => {
+                capturedBlob = blob;
+                alert("Surat muvaffaqiyatli olindi! Endi 'Tasdiqlash va yuborish' tugmasini bosing.");
+                submitBtn.style.background = "#3b82f6";
+                submitBtn.style.cursor = "pointer";
+                submitBtn.removeAttribute('disabled');
+            }, 'image/jpeg');
+        });
+
+        submitBtn.addEventListener('click', function() {
+            let select = document.getElementById('employeeSelect');
+            if (!select.value) {
+                alert("Iltimos, avval ism-familiyangizni tanlang!");
+                return;
+            }
+            if (!capturedBlob) {
+                alert("Iltimos, avval kameraga qarab 'Suratga olish' tugmasini bosing!");
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(pos => {
+                let lat = pos.coords.latitude;
+                let lon = pos.coords.longitude;
+                let actionVal = "{{ action }}";
+                let xodimIdVal = select.value;
+
+                let formData = new FormData();
+                formData.append('action', actionVal);
+                formData.append('xodim_id', xodimIdVal);
+                formData.append('lat', lat);
+                formData.append('lon', lon);
+                formData.append('emp_photo', capturedBlob, 'selfie.jpg');
+
+                submitBtn.innerText = "Yuborilmoqda...";
+                submitBtn.disabled = true;
+
+                fetch('/result', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(res => res.text())
+                .then(html => {
+                    document.open();
+                    document.write(html);
+                    document.close();
+                })
+                .catch(err => {
+                    alert("Xatolik yuz berdi: " + err);
+                    submitBtn.innerText = "Tasdiqlash va yuborish";
+                    submitBtn.disabled = false;
+                });
+            }, err => { alert("GPS xatosi! Lokatsiyaga ruxsat bering."); }, {enableHighAccuracy: true});
+        });
+
         function filterEmployees() {
             let input = document.getElementById('searchInput').value.toLowerCase();
             let select = document.getElementById('employeeSelect');
@@ -291,12 +368,17 @@ def select_employee():
 
 @app.route('/verify')
 def verify():
-    action = request.args.get('action')
-    xodim_id = request.args.get('xodim_id')
+    return redirect(url_for('index'))
+
+@app.route('/result', methods=['POST'])
+def result():
+    action = request.form.get('action')
+    xodim_id = request.form.get('xodim_id')
+    lat = float(request.form.get('lat', 0))
+    lon = float(request.form.get('lon', 0))
     xodim = next((x for x in XODIMLAR if str(x['id']) == str(xodim_id)), None)
     if not xodim: return "Xodim topilmadi!"
 
-    # Agar KIRISH qilmoqchi bo'lsa va bugun allaqachon kelgan bo'lsa, bloklaymiz
     if action == 'KIRISH' and bugun_kelganmi(xodim['id']):
         return f"""
         <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Xatolik</title>
@@ -310,36 +392,6 @@ def verify():
             <a href="/" class="btn">Bosh sahifaga qaytish</a>
         </div></body></html>
         """
-
-    return render_template_string('''
-    <!DOCTYPE html><html lang="uz"><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>GPS</title></head>
-    <body style="background:#0f172a;color:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;font-family:sans-serif;">
-        <div style="background:#1e293b;padding:40px;border-radius:20px;text-align:center;">
-            <h3 style="font-size: 22px; color: #38bdf8;">Lokatsiya aniqlanmoqda...</h3>
-            <p style="color:#94a3b8; font-size: 16px;">Iltimos, GPS ga ruxsat bering...</p>
-            <form id="geoForm" action="/result" method="POST" enctype="multipart/form-data"><input type="hidden" name="action" value="{{ action }}"><input type="hidden" name="xodim_id" value="{{ xodim.id }}"><input type="hidden" name="lat" id="lat"><input type="hidden" name="lon" id="lon"></form>
-        </div>
-        <script>
-            navigator.geolocation.getCurrentPosition(pos => {
-                document.getElementById('lat').value = pos.coords.latitude;
-                document.getElementById('lon').value = pos.coords.longitude;
-                document.getElementById('geoForm').submit();
-            }, err => { alert("GPS xatosi! Lokatsiyaga ruxsat bering."); window.location.href='/'; }, {enableHighAccuracy: true});
-        </script>
-    </body></html>
-    ''', action=action, xodim=xodim)
-
-@app.route('/result', methods=['POST'])
-def result():
-    action = request.form.get('action')
-    xodim_id = request.form.get('xodim_id')
-    lat = float(request.form.get('lat', 0))
-    lon = float(request.form.get('lon', 0))
-    xodim = next((x for x in XODIMLAR if str(x['id']) == str(xodim_id)), None)
-    if not xodim: return "Xodim topilmadi!"
-
-    if action == 'KIRISH' and bugun_kelganmi(xodim['id']):
-        return "Siz bugun allaqachon davomatdan o'tgansiz!"
 
     masofa = hisobla_masofa(lat, lon, TEHNIKUM_LAT, TEHNIKUM_LON)
 
