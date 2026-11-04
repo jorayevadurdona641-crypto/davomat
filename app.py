@@ -28,7 +28,7 @@ UZB_TZ = ZoneInfo("Asia/Tashkent")
 
 TEHNIKUM_LAT = 38.970790
 TEHNIKUM_LON = 66.706597
-DAVOMAT_MAX_MASOFA = 100     
+DAVOMAT_MAX_MASOFA = 150     # <--- 150 METr QILIB O'ZGARTIRILDI
 OGOHLANTIRISH_MASOFA = 500   
 
 def xodimlarni_yuklash():
@@ -114,7 +114,7 @@ def bugun_chiqqanmi(xodim_id):
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
-def davomatni_saqlash(xodim, amal, vaqt, holat_str="Hududda"):
+def davomatni_saqlash(xodim, amal, vaqt, holat_str="O'z vaqtida ✅"):
     bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
     if os.path.exists(EXCEL_HISOBOT):
         df = pd.read_excel(EXCEL_HISOBOT)
@@ -122,7 +122,7 @@ def davomatni_saqlash(xodim, amal, vaqt, holat_str="Hududda"):
         df = pd.DataFrame(columns=["ID", "F.I.O", "Lavozimi", "Sana", "Kelish_Vaqti", "Ketish_Vaqti", "Holat", "Oxirgi_Holat"])
     
     if "Oxirgi_Holat" not in df.columns:
-        df["Oxirgi_Holat"] = "Hududda"
+        df["Oxirgi_Holat"] = "O'z vaqtida ✅"
     
     df['clean_id'] = df['ID'].astype(str).str.split('.').str[0].str.strip() if not df.empty else pd.Series(dtype=str)
     target_id = str(xodim["id"]).split('.')[0].strip()
@@ -131,27 +131,25 @@ def davomatni_saqlash(xodim, amal, vaqt, holat_str="Hududda"):
     
     if amal == "KIRISH":
         if mavjud.empty:
-            yangi_qator = {"ID": xodim["id"], "F.I.O": xodim["fame"], "Lavozimi": xodim["lavozim"], "Sana": bugun, "Kelish_Vaqti": vaqt, "Ketish_Vaqti": "-", "Holat": "Keldi", "Oxirgi_Holat": holat_str}
+            yangi_qator = {"ID": xodim["id"], "F.I.O": xodim["fame"], "Lavozimi": xodim["lavozim"], "Sana": bugun, "Kelish_Vaqti": vaqt, "Ketish_Vaqti": "-", "Holat": holat_str, "Oxirgi_Holat": holat_str}
             df = pd.concat([df, pd.DataFrame([yangi_qator])], ignore_index=True)
         else:
             idx = mavjud.index[0]
             df.loc[idx, "Kelish_Vaqti"] = vaqt
-            df.loc[idx, "Holat"] = "Keldi"
+            df.loc[idx, "Holat"] = holat_str
             df.loc[idx, "Oxirgi_Holat"] = holat_str
     elif amal == "CHIQISH":
         if not mavjud.empty:
             idx = mavjud.index[0]
             df.loc[idx, "Ketish_Vaqti"] = vaqt
-            df.loc[idx, "Holat"] = "Ketdi"
+            df.loc[idx, "Holat"] = "Chiqib ketdi ❌"
             df.loc[idx, "Oxirgi_Holat"] = "Chiqib ketdi ❌"
         else:
-            yangi_qator = {"ID": xodim["id"], "F.I.O": xodim["fame"], "Lavozimi": xodim["lavozim"], "Sana": bugun, "Kelish_Vaqti": "-", "Ketish_Vaqti": vaqt, "Holat": "Faqat Chiqish", "Oxirgi_Holat": "Chiqib ketdi ❌"}
+            yangi_qator = {"ID": xodim["id"], "F.I.O": xodim["fame"], "Lavozimi": xodim["lavozim"], "Sana": bugun, "Kelish_Vaqti": "-", "Ketish_Vaqti": vaqt, "Holat": "Chiqib ketdi ❌", "Oxirgi_Holat": "Chiqib ketdi ❌"}
             df = pd.concat([df, pd.DataFrame([yangi_qator])], ignore_index=True)
             
     if 'clean_id' in df.columns:
         df = df.drop(columns=['clean_id'])
-    
-    # Faylga to'g'ridan-to'g'ri yozish va saqlash
     df.to_excel(EXCEL_HISOBOT, index=False)
 
 def telegramga_rasmli_xabar_yuborish(photo_path, matn, target_chat_ids):
@@ -294,6 +292,7 @@ def admin_panel():
                 <td>
                     {% if 'Chiqib' in r['Oxirgi_Holat'] %}<span class="badge-chiqdi">{{ r['Oxirgi_Holat'] }}</span>
                     {% elif 'Kechikdi' in r['Oxirgi_Holat'] %}<span class="badge-kechikdi">{{ r['Oxirgi_Holat'] }}</span>
+                    {% elif 'Hududdan' in r['Oxirgi_Holat'] %}<span class="badge-kechikdi">{{ r['Oxirgi_Holat'] }}</span>
                     {% else %}<span class="badge-keldi">O'z vaqtida ✅</span>{% endif %}
                 </td>
             </tr>
@@ -564,7 +563,7 @@ def result():
             rang = "#f97316"
             holat_telegram = "Holat: Kechikib keldi ⚠️"
         else:
-            holat_matn = "Hududda"
+            holat_matn = "O'z vaqtida ✅"
             tabrik_matn = "Tabriklaymiz, siz vaqtida o'tdingiz! 🎉"
             rang = "#22c55e"
             holat_telegram = "Holat: O'z vaqtida keldi ✅"
