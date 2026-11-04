@@ -81,7 +81,12 @@ def bugun_kelganmi(xodim_id):
     if os.path.exists(EXCEL_HISOBOT):
         try:
             df = pd.read_excel(EXCEL_HISOBOT)
-            mavjud = df[(df["ID"].astype(str) == str(xodim_id)) & (df["Sana"] == bugun) & (df["Kelish_Vaqti"] != "-")]
+            if df.empty or 'ID' not in df.columns or 'Sana' not in df.columns:
+                return False
+            df['clean_id'] = df['ID'].astype(str).str.split('.').str[0].str.strip()
+            target_id = str(xodim_id).split('.')[0].strip()
+            
+            mavjud = df[(df['clean_id'] == target_id) & (df['Sana'].astype(str) == bugun) & (df['Kelish_Vaqti'] != "-")]
             if not mavjud.empty:
                 return True
         except Exception as e:
@@ -93,7 +98,12 @@ def bugun_chiqqanmi(xodim_id):
     if os.path.exists(EXCEL_HISOBOT):
         try:
             df = pd.read_excel(EXCEL_HISOBOT)
-            mavjud = df[(df["ID"].astype(str) == str(xodim_id)) & (df["Sana"] == bugun) & (df["Ketish_Vaqti"] != "-")]
+            if df.empty or 'ID' not in df.columns or 'Sana' not in df.columns:
+                return False
+            df['clean_id'] = df['ID'].astype(str).str.split('.').str[0].str.strip()
+            target_id = str(xodim_id).split('.')[0].strip()
+            
+            mavjud = df[(df['clean_id'] == target_id) & (df['Sana'].astype(str) == bugun) & (df['Ketish_Vaqti'] != "-")]
             if not mavjud.empty:
                 return True
         except Exception as e:
@@ -106,27 +116,42 @@ def uploaded_file(filename):
 
 def davomatni_saqlash(xodim, amal, vaqt, holat_str="Hududda"):
     bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
-    df = pd.read_excel(EXCEL_HISOBOT)
+    if os.path.exists(EXCEL_HISOBOT):
+        df = pd.read_excel(EXCEL_HISOBOT)
+    else:
+        df = pd.DataFrame(columns=["ID", "F.I.O", "Lavozimi", "Sana", "Kelish_Vaqti", "Ketish_Vaqti", "Holat", "Oxirgi_Holat"])
+    
     if "Oxirgi_Holat" not in df.columns:
         df["Oxirgi_Holat"] = "Hududda"
-    mavjud = df[(df["ID"].astype(str) == str(xodim["id"])) & (df["Sana"] == bugun)]
+    
+    df['clean_id'] = df['ID'].astype(str).str.split('.').str[0].str.strip() if not df.empty else pd.Series(dtype=str)
+    target_id = str(xodim["id"]).split('.')[0].strip()
+    
+    mavjud = df[(df['clean_id'] == target_id) & (df['Sana'].astype(str) == bugun)] if not df.empty else pd.DataFrame()
     
     if amal == "KIRISH":
         if mavjud.empty:
             yangi_qator = {"ID": xodim["id"], "F.I.O": xodim["fame"], "Lavozimi": xodim["lavozim"], "Sana": bugun, "Kelish_Vaqti": vaqt, "Ketish_Vaqti": "-", "Holat": "Keldi", "Oxirgi_Holat": holat_str}
             df = pd.concat([df, pd.DataFrame([yangi_qator])], ignore_index=True)
         else:
-            df.loc[(df["ID"].astype(str) == str(xodim["id"])) & (df["Sana"] == bugun), "Kelish_Vaqti"] = vaqt
-            df.loc[(df["ID"].astype(str) == str(xodim["id"])) & (df["Sana"] == bugun), "Holat"] = "Keldi"
-            df.loc[(df["ID"].astype(str) == str(xodim["id"])) & (df["Sana"] == bugun), "Oxirgi_Holat"] = holat_str
+            idx = mavjud.index[0]
+            df.loc[idx, "Kelish_Vaqti"] = vaqt
+            df.loc[idx, "Holat"] = "Keldi"
+            df.loc[idx, "Oxirgi_Holat"] = holat_str
     elif amal == "CHIQISH":
         if not mavjud.empty:
-            df.loc[(df["ID"].astype(str) == str(xodim["id"])) & (df["Sana"] == bugun), "Ketish_Vaqti"] = vaqt
-            df.loc[(df["ID"].astype(str) == str(xodim["id"])) & (df["Sana"] == bugun), "Holat"] = "Ketdi"
-            df.loc[(df["ID"].astype(str) == str(xodim["id"])) & (df["Sana"] == bugun), "Oxirgi_Holat"] = "Chiqib ketdi ❌"
+            idx = mavjud.index[0]
+            df.loc[idx, "Ketish_Vaqti"] = vaqt
+            df.loc[idx, "Holat"] = "Ketdi"
+            df.loc[idx, "Oxirgi_Holat"] = "Chiqib ketdi ❌"
         else:
             yangi_qator = {"ID": xodim["id"], "F.I.O": xodim["fame"], "Lavozimi": xodim["lavozim"], "Sana": bugun, "Kelish_Vaqti": "-", "Ketish_Vaqti": vaqt, "Holat": "Faqat Chiqish", "Oxirgi_Holat": "Chiqib ketdi ❌"}
             df = pd.concat([df, pd.DataFrame([yangi_qator])], ignore_index=True)
+            
+    if 'clean_id' in df.columns:
+        df = df.drop(columns=['clean_id'])
+    
+    # Faylga to'g'ridan-to'g'ri yozish va saqlash
     df.to_excel(EXCEL_HISOBOT, index=False)
 
 def telegramga_rasmli_xabar_yuborish(photo_path, matn, target_chat_ids):
@@ -212,8 +237,17 @@ def admin_panel():
     else:
         sana_df = pd.DataFrame()
 
-    kelgan_ids = set(sana_df["ID"].astype(str)) if not sana_df.empty else set()
-    kelmaganlar = [x for x in XODIMLAR if str(x['id']) not in kelgan_ids]
+    kelgan_ids = set()
+    if not sana_df.empty and 'ID' in sana_df.columns:
+        for val in sana_df["ID"].astype(str):
+            clean_val = val.split('.')[0].strip()
+            kelgan_ids.add(clean_val)
+
+    kelmaganlar = []
+    for x in XODIMLAR:
+        x_id = str(x['id']).split('.')[0].strip()
+        if x_id not in kelgan_ids:
+            kelmaganlar.append(x)
 
     return render_template_string('''
     <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Admin Paneli</title>
@@ -421,7 +455,6 @@ def result():
     xodim = next((x for x in XODIMLAR if str(x['id']) == str(xodim_id)), None)
     if not xodim: return "Xodim topilmadi!"
 
-    # Takroriy kirishni tekshirish
     if action == 'KIRISH' and bugun_kelganmi(xodim['id']):
         return f"""
         <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Xatolik</title>
@@ -436,7 +469,6 @@ def result():
         </div></body></html>
         """
 
-    # Takroriy chiqishni tekshirish
     if action == 'CHIQISH' and bugun_chiqqanmi(xodim['id']):
         return f"""
         <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Xatolik</title>
@@ -451,13 +483,12 @@ def result():
         </div></body></html>
         """
 
-    # CHIQISH UCHUN VAQT VA KUN TEKshiruvi (Shanba: 13:00, Boshqa kunlar: 16:00)
     hozir = datetime.now(UZB_TZ)
     if action == 'CHIQISH':
-        hafta_kuni = hozir.weekday() # 5 - Shanba, 6 - Yakshanba
+        hafta_kuni = hozir.weekday() 
         soat = hozir.hour
 
-        if hafta_kuni == 5: # Shanba
+        if hafta_kuni == 5: 
             if soat < 13:
                 return f"""
                 <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Vaqt xatosi</title>
@@ -471,7 +502,7 @@ def result():
                     <a href="/" class="btn">Bosh sahifaga qaytish</a>
                 </div></body></html>
                 """
-        else: # Dushanba - Juma
+        else: 
             if soat < 16:
                 return f"""
                 <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Vaqt xatosi</title>
@@ -526,7 +557,7 @@ def result():
             holat_matn = f"Hududdan chiqib ketgan 🚨 ({int(masofa)}m)"
             tabrik_matn = f"Diqqat! Siz hududdan chiqib ketgansiz ({int(masofa)}m)! ⚠️"
             rang = "#eab308"
-            holat_telegram = f"Holat: <b>🚨 DIQQAT! XODIM HUDUDDAN CHIQIB KETGAN! ({int(masofa)}m)</b>"
+            holat_telegram = f"Holat: <b>🚨 DIQQAT! {xodim['fame']} HUDUDDAN CHIQIB KETGAN! ({int(masofa)}m)</b>"
         elif is_late:
             holat_matn = "Kechikdi ⚠️"
             tabrik_matn = "Afsuski, siz kechikdingiz! ⚠️"
@@ -566,8 +597,13 @@ def result():
         """
 
     elif action == 'CHIQISH':
+        if masofa > OGOHLANTIRISH_MASOFA:
+            holat_telegram = f"Holat: <b>🚨 DIQQAT! {xodim['fame']} HUDUDDAN CHIQIB KETGAN! ({int(masofa)}m)</b>"
+        else:
+            holat_telegram = "Holat: Ishdan ketdi 🔴"
+
         davomatni_saqlash(xodim, "CHIQISH", vaqt_str, holat_str="Chiqib ketdi ❌")
-        matn_xabar = f"🔴 <b>CHIQISH (Ketish) - {bugun}</b>\n\n👤 <b>F.I.O:</b> {xodim['fame']}\n📋 <b>Lavozimi:</b> {xodim['lavozim']}\n⏰ <b>Vaqt:</b> {vaqt_str}\n<b>Holat:</b> Ishdan ketdi 🔴\n📍 <b>Masofa:</b> {int(masofa)}m"
+        matn_xabar = f"🔴 <b>CHIQISH (Ketish) - {bugun}</b>\n\n👤 <b>F.I.O:</b> {xodim['fame']}\n📋 <b>Lavozimi:</b> {xodim['lavozim']}\n⏰ <b>Vaqt:</b> {vaqt_str}\n{holat_telegram}\n📍 <b>Masofa:</b> {int(masofa)}m"
         telegramga_rasmli_xabar_yuborish(fayl_path, matn_xabar, target_chat_ids=target_chat_ids)
 
         return f"""
