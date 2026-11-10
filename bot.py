@@ -96,8 +96,13 @@ def bot_bugun_kelganmi(jshr):
             print("Tekshirishda xatolik:", e)
     return False
 
-def davomatni_saqlash_bot(jshr, teacher_name, position, vaqt_str, holat_str):
+def davomatni_saqlash_bot(jshr, teacher_name, position, vaqt_str, holat_turi):
+    """
+    Kelish va ketish vaqtlarini bitta qatorda (bitta variqda) saqlash funksiyasi.
+    """
     bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
+    clean_jshr = str(jshr).strip().split('.')[0]
+    
     if not os.path.exists(EXCEL_HISOBOT):
         df = pd.DataFrame(columns=["ID", "F.I.O", "Lavozimi", "Sana", "Kelish_Vaqti", "Ketish_Vaqti", "Holat", "Oxirgi_Holat"])
     else:
@@ -106,12 +111,26 @@ def davomatni_saqlash_bot(jshr, teacher_name, position, vaqt_str, holat_str):
     if "Oxirgi_Holat" not in df.columns:
         df["Oxirgi_Holat"] = "Hududda"
 
-    yangi_qator = {
-        "ID": jshr, "F.I.O": teacher_name, "Lavozimi": position, 
-        "Sana": bugun, "Kelish_Vaqti": vaqt_str, "Ketish_Vaqti": "-", 
-        "Holat": "Keldi", "Oxirgi_Holat": holat_str
-    }
-    df = pd.concat([df, pd.DataFrame([yangi_qator])], ignore_index=True)
+    mask = (df["ID"].astype(str).str.split('.').str[0] == clean_jshr) & (df["Sana"] == bugun)
+    
+    if not df[mask].empty:
+        # Agar bugungi yozuvi mavjud bo'lsa, demak bu ketish vaqti
+        df.loc[mask, "Ketish_Vaqti"] = vaqt_str
+        df.loc[mask, "Oxirgi_Holat"] = "Ketdi"
+    else:
+        # Agar bugun hali ro'yxatga o'tmagan bo'lsa, bu kelish vaqti
+        yangi_qator = {
+            "ID": jshr, 
+            "F.I.O": teacher_name, 
+            "Lavozimi": position, 
+            "Sana": bugun, 
+            "Kelish_Vaqti": vaqt_str, 
+            "Ketish_Vaqti": "-", 
+            "Holat": holat_turi, 
+            "Oxirgi_Holat": "Hududda"
+        }
+        df = pd.concat([df, pd.DataFrame([yangi_qator])], ignore_index=True)
+        
     df.to_excel(EXCEL_HISOBOT, index=False)
 
 @dp.message(Command("start"))
