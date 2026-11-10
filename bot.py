@@ -10,6 +10,8 @@ from aiogram.filters import Command
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
+from flask import Flask
+from threading import Thread
 
 # --- SOZLAMALAR ---
 TELEGRAM_BOT_TOKEN = "9241880191:AAEGdwBHjqdBmqLv4hOrL8bIvJl2bRAV8QE"
@@ -26,6 +28,21 @@ DAVOMAT_MAX_MASOFA = 100
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
+
+# --- FLASK SERVER (Render port talabini qondirish uchun) ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is active!"
+
+def run():
+    app.run(host='0.0.0.0', port=10000)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
 
 class AttendanceState(StatesGroup):
     waiting_for_jshr = State()
@@ -53,7 +70,6 @@ def get_teacher_from_excel_bot(jshr: str):
             tg_id = str(row.iloc[3]).strip() if len(row) > 3 and pd.notna(row.iloc[3]) else ""
             pnfl = str(row.iloc[4]).strip() if len(row) > 4 and pd.notna(row.iloc[4]) else ""
             
-            # PNFL ni to'g'ri solishtirish (oxiridagi .0 larni tozalash)
             clean_input_jshr = str(jshr).strip().split('.')[0]
             clean_row_pnfl = str(pnfl).strip().split('.')[0]
             
@@ -208,4 +224,5 @@ async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
+    keep_alive()  # Flask serverni fon rejimida yoqamiz
     asyncio.run(main())
