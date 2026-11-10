@@ -14,7 +14,7 @@ from flask import Flask
 from threading import Thread
 
 # --- SOZLAMALAR ---
-TELEGRAM_BOT_TOKEN = "9241880191:AAEGdwBHjqdBmqLv4hOrL8bIvJl2bRAV8QE"
+TELEGRAM_BOT_TOKEN = "9241880191:AAHfYqQSQC9KOpeAfFdomyft9nhIBm-h6sk"
 ADMIN_IDS_INT = [1179846016, 1838498079, 1611805500, 727029645]
 
 EXCEL_HISOBOT = "davomat_hisobot.xlsx"
