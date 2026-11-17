@@ -9,14 +9,15 @@ import csv
 import openpyxl
 
 app = Flask(__name__)
-app.secret_key = "yakkabog_davomat_maxfiy_kalit"
+app.secret_key = os.environ.get("SECRET_KEY", "yakkabog_davomat_maxfiy_kalit")
 
-# --- TELEGRAM BOT TOKENI ---
-TELEGRAM_BOT_TOKEN = "9241880191:AAHfYqQSQC9KOpeAfFdomyft9nhIBm-h6sk"
+# --- TELEGRAM BOT TOKENI (Render > Environment bo'limidan olinadi) ---
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 ADMIN_CHAT_IDS = ["1179846016", "1838498079", "1611805500", "727029645"]
+ADMIN_PAROL = os.environ.get("ADMIN_PAROL", "7777")
 
 EXCEL_HISOBOT = "davomat_hisobot.xlsx"
-XODIMLAR_FAYLI = Umumiy malumot.xlsx
+XODIMLAR_FAYLI = "xodimlar.xlsx"   # <--- FAYL NOMI O'ZGARTIRILDI
 LOG_FILE = "attendance_log.csv"
 UPLOAD_FOLDER = "uploads"
 
@@ -28,8 +29,9 @@ UZB_TZ = ZoneInfo("Asia/Tashkent")
 
 TEHNIKUM_LAT = 38.970790
 TEHNIKUM_LON = 66.706597
-DAVOMAT_MAX_MASOFA = 150     # <--- 150 METr QILIB O'ZGARTIRILDI
-OGOHLANTIRISH_MASOFA = 500   
+DAVOMAT_MAX_MASOFA = 150
+OGOHLANTIRISH_MASOFA = 500
+
 
 def xodimlarni_yuklash():
     if os.path.exists(XODIMLAR_FAYLI):
@@ -37,13 +39,13 @@ def xodimlarni_yuklash():
             df = pd.read_excel(XODIMLAR_FAYLI, sheet_name=0, skiprows=2)
             xodimlar_royxati = []
             kerak_emas_sozlar = ["qorovul", "farrosh", "soatbay"]
-            
+
             for index, row in df.iterrows():
                 fio = str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else ""
                 lavozim = str(row.iloc[2]).strip() if pd.notna(row.iloc[2]) else "O'qituvchi"
                 tg_id = str(row.iloc[3]).strip() if len(row) > 3 and pd.notna(row.iloc[3]) else ""
                 pnfl = str(row.iloc[4]).strip() if len(row) > 4 and pd.notna(row.iloc[4]) else ""
-                
+
                 if fio and fio != "nan":
                     lavozim_kichik = lavozim.lower()
                     tashlab_yuborish = False
@@ -51,7 +53,7 @@ def xodimlarni_yuklash():
                         if soz in lavozim_kichik:
                             tashlab_yuborish = True
                             break
-                    
+
                     if not tashlab_yuborish:
                         xodim_id = len(xodimlar_royxati) + 1
                         xodimlar_royxati.append({
@@ -61,9 +63,13 @@ def xodimlarni_yuklash():
             return xodimlar_royxati
         except Exception as e:
             print("Excelni o'qishda xatolik:", e)
+    else:
+        print("Xodimlar fayli topilmadi:", XODIMLAR_FAYLI, "| Papkadagi fayllar:", os.listdir("."))
     return []
 
+
 XODIMLAR = xodimlarni_yuklash()
+
 
 def bazani_tekshir():
     if not os.path.exists(EXCEL_HISOBOT):
@@ -74,7 +80,9 @@ def bazani_tekshir():
             writer = csv.writer(f)
             writer.writerow(["PNFL", "F.I.Sh.", "Lavozim", "Sana", "Vaqt", "Holati", "Oxirgi_Holat"])
 
+
 bazani_tekshir()
+
 
 def bugun_kelganmi(xodim_id):
     bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
@@ -85,13 +93,14 @@ def bugun_kelganmi(xodim_id):
                 return False
             df['clean_id'] = df['ID'].astype(str).str.split('.').str[0].str.strip()
             target_id = str(xodim_id).split('.')[0].strip()
-            
+
             mavjud = df[(df['clean_id'] == target_id) & (df['Sana'].astype(str) == bugun) & (df['Kelish_Vaqti'] != "-")]
             if not mavjud.empty:
                 return True
         except Exception as e:
             print("Tekshirishda xatolik:", e)
     return False
+
 
 def bugun_chiqqanmi(xodim_id):
     bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
@@ -102,7 +111,7 @@ def bugun_chiqqanmi(xodim_id):
                 return False
             df['clean_id'] = df['ID'].astype(str).str.split('.').str[0].str.strip()
             target_id = str(xodim_id).split('.')[0].strip()
-            
+
             mavjud = df[(df['clean_id'] == target_id) & (df['Sana'].astype(str) == bugun) & (df['Ketish_Vaqti'] != "-")]
             if not mavjud.empty:
                 return True
@@ -110,9 +119,11 @@ def bugun_chiqqanmi(xodim_id):
             print("Tekshirishda xatolik:", e)
     return False
 
+
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
 
 def davomatni_saqlash(xodim, amal, vaqt, holat_str="O'z vaqtida ✅"):
     bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
@@ -120,15 +131,15 @@ def davomatni_saqlash(xodim, amal, vaqt, holat_str="O'z vaqtida ✅"):
         df = pd.read_excel(EXCEL_HISOBOT)
     else:
         df = pd.DataFrame(columns=["ID", "F.I.O", "Lavozimi", "Sana", "Kelish_Vaqti", "Ketish_Vaqti", "Holat", "Oxirgi_Holat"])
-    
+
     if "Oxirgi_Holat" not in df.columns:
         df["Oxirgi_Holat"] = "O'z vaqtida ✅"
-    
+
     df['clean_id'] = df['ID'].astype(str).str.split('.').str[0].str.strip() if not df.empty else pd.Series(dtype=str)
     target_id = str(xodim["id"]).split('.')[0].strip()
-    
+
     mavjud = df[(df['clean_id'] == target_id) & (df['Sana'].astype(str) == bugun)] if not df.empty else pd.DataFrame()
-    
+
     if amal == "KIRISH":
         if mavjud.empty:
             yangi_qator = {"ID": xodim["id"], "F.I.O": xodim["fame"], "Lavozimi": xodim["lavozim"], "Sana": bugun, "Kelish_Vaqti": vaqt, "Ketish_Vaqti": "-", "Holat": holat_str, "Oxirgi_Holat": holat_str}
@@ -147,12 +158,16 @@ def davomatni_saqlash(xodim, amal, vaqt, holat_str="O'z vaqtida ✅"):
         else:
             yangi_qator = {"ID": xodim["id"], "F.I.O": xodim["fame"], "Lavozimi": xodim["lavozim"], "Sana": bugun, "Kelish_Vaqti": "-", "Ketish_Vaqti": vaqt, "Holat": "Chiqib ketdi ❌", "Oxirgi_Holat": "Chiqib ketdi ❌"}
             df = pd.concat([df, pd.DataFrame([yangi_qator])], ignore_index=True)
-            
+
     if 'clean_id' in df.columns:
         df = df.drop(columns=['clean_id'])
     df.to_excel(EXCEL_HISOBOT, index=False)
 
+
 def telegramga_rasmli_xabar_yuborish(photo_path, matn, target_chat_ids):
+    if not TELEGRAM_BOT_TOKEN:
+        print("TELEGRAM_BOT_TOKEN o'rnatilmagan!")
+        return
     for chat_id in target_chat_ids:
         if not chat_id or str(chat_id).strip() == "nan":
             continue
@@ -167,12 +182,29 @@ def telegramga_rasmli_xabar_yuborish(photo_path, matn, target_chat_ids):
         except Exception as e:
             print("Telegramga yuborishda xatolik:", e)
 
+
 def hisobla_masofa(lat1, lon1, lat2, lon2):
-    R = 6371000  
+    R = 6371000
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
     a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2)**2
     return R * (2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)))
+
+
+def xato_sahifa(sarlavha, matn_html, rang):
+    return f"""
+    <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Xatolik</title>
+    <style>body{{font-family:'Segoe UI',sans-serif;background:#0f172a;color:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;}}
+    .card{{background:#1e293b;padding:40px 30px;border-radius:20px;text-align:center;max-width:420px;width:100%;box-shadow:0 15px 35px rgba(0,0,0,0.5);box-sizing:border-box;}}
+    h2{{color:{rang};font-size:24px;margin-bottom:15px;}}p{{color:#94a3b8;font-size:16px;margin-bottom:25px;}}
+    .btn{{display:block;width:100%;padding:16px;background:#38bdf8;color:#0f172a;font-weight:bold;font-size:18px;border-radius:12px;text-decoration:none;box-sizing:border-box;}}</style></head>
+    <body><div class="card">
+        <h2>{sarlavha}</h2>
+        <p>{matn_html}</p>
+        <a href="/" class="btn">Bosh sahifaga qaytish</a>
+    </div></body></html>
+    """
+
 
 @app.route('/')
 def index():
@@ -197,15 +229,16 @@ def index():
     </div></body></html>
     ''')
 
+
 @app.route('/admin-login', methods=['GET', 'POST'])
 def admin_login():
     error = None
     if request.method == 'POST':
-        if request.form.get('parol') == "7777":
+        if request.form.get('parol') == ADMIN_PAROL:
             session['admin_logged'] = True
             return redirect(url_for('admin_panel'))
         else:
-            error = "Parol noto'g'ri! (7777)"
+            error = "Parol noto'g'ri!"
     return render_template_string('''
     <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Admin Kirish</title>
     <style>
@@ -222,14 +255,15 @@ def admin_login():
     </div></body></html>
     ''', error=error)
 
+
 @app.route('/admin')
 def admin_panel():
     if not session.get('admin_logged'):
         return redirect(url_for('admin_login'))
-    
+
     sana_filter = request.args.get('sana', datetime.now(UZB_TZ).strftime("%Y-%m-%d"))
     df = pd.read_excel(EXCEL_HISOBOT) if os.path.exists(EXCEL_HISOBOT) else pd.DataFrame()
-    
+
     if not df.empty and 'Sana' in df.columns:
         sana_df = df[df['Sana'].astype(str) == str(sana_filter)]
     else:
@@ -313,6 +347,7 @@ def admin_panel():
     </div></body></html>
     ''', sana_filter=sana_filter, data=sana_df, kelmaganlar=kelmaganlar)
 
+
 @app.route('/download-excel')
 def download_excel():
     if not session.get('admin_logged'):
@@ -320,6 +355,7 @@ def download_excel():
     if os.path.exists(EXCEL_HISOBOT):
         return send_file(EXCEL_HISOBOT, as_attachment=True)
     return "Hali hisobot fayli yaratilmagan!"
+
 
 @app.route('/select-employee')
 def select_employee():
@@ -338,7 +374,7 @@ def select_employee():
     <body><div class="card">
         <h3 style="color:#38bdf8; font-size: 22px; margin-top:0;">Xodimni tanlash va Selfie</h3>
         <p style="color:#94a3b8; font-size: 15px;">Harakat: <b>{{ action }}</b></p>
-        
+
         <input type="text" id="searchInput" placeholder="🔍 Ism yoki familiyani yozib qidiring..." onkeyup="filterEmployees()">
         <select id="employeeSelect" required><option value="" disabled selected>-- Ism familiyani tanlang --</option>
         {% for x in xodimlar %}<option value="{{ x.id }}" data-name="{{ x.fame | lower }}">{{ x.fame }} ({{ x.lavozim }})</option>{% endfor %}</select>
@@ -353,7 +389,7 @@ def select_employee():
         <button type="button" id="submitBtn" class="btn" style="background:#64748b; cursor:not-allowed;" disabled>Tasdiqlash va yuborish</button>
         <a href="/" style="display:block;margin-top:20px;color:#94a3b8;text-decoration:none;font-size:15px;">⟵ Qaytish</a>
     </div>
-    
+
     <script>
         let video = document.getElementById('video');
         let canvas = document.getElementById('canvas');
@@ -370,7 +406,7 @@ def select_employee():
             canvas.height = video.videoHeight;
             let ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
+
             canvas.toBlob(blob => {
                 capturedBlob = blob;
                 alert("Surat muvaffaqiyatli olindi! Endi 'Tasdiqlash va yuborish' tugmasini bosing.");
@@ -441,9 +477,11 @@ def select_employee():
     </script></body></html>
     ''', action=action, xodimlar=XODIMLAR)
 
+
 @app.route('/verify')
 def verify():
     return redirect(url_for('index'))
+
 
 @app.route('/result', methods=['POST'])
 def result():
@@ -452,85 +490,46 @@ def result():
     lat = float(request.form.get('lat', 0))
     lon = float(request.form.get('lon', 0))
     xodim = next((x for x in XODIMLAR if str(x['id']) == str(xodim_id)), None)
-    if not xodim: return "Xodim topilmadi!"
+    if not xodim:
+        return "Xodim topilmadi!"
 
     if action == 'KIRISH' and bugun_kelganmi(xodim['id']):
-        return f"""
-        <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Xatolik</title>
-        <style>body{{font-family:'Segoe UI',sans-serif;background:#0f172a;color:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;}}
-        .card{{background:#1e293b;padding:40px 30px;border-radius:20px;text-align:center;max-width:420px;width:100%;box-shadow:0 15px 35px rgba(0,0,0,0.5);box-sizing:border-box;}}
-        h2{{color:#ef4444;font-size:24px;margin-bottom:15px;}}p{{color:#94a3b8;font-size:16px;margin-bottom:25px;}}
-        .btn{{display:block;width:100%;padding:16px;background:#38bdf8;color:#0f172a;font-weight:bold;font-size:18px;border-radius:12px;text-decoration:none;box-sizing:border-box;}}</style></head>
-        <body><div class="card">
-            <h2>⚠️ Allaqachon o'tgansiz!</h2>
-            <p><b>{xodim['fame']}</b>, siz bugun allaqachon kelish davomatidan o'tgansiz. Qayta o'tish mumkin emas!</p>
-            <a href="/" class="btn">Bosh sahifaga qaytish</a>
-        </div></body></html>
-        """
+        return xato_sahifa(
+            "⚠️ Allaqachon o'tgansiz!",
+            f"<b>{xodim['fame']}</b>, siz bugun allaqachon kelish davomatidan o'tgansiz. Qayta o'tish mumkin emas!",
+            "#ef4444")
 
     if action == 'CHIQISH' and bugun_chiqqanmi(xodim['id']):
-        return f"""
-        <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Xatolik</title>
-        <style>body{{font-family:'Segoe UI',sans-serif;background:#0f172a;color:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;}}
-        .card{{background:#1e293b;padding:40px 30px;border-radius:20px;text-align:center;max-width:420px;width:100%;box-shadow:0 15px 35px rgba(0,0,0,0.5);box-sizing:border-box;}}
-        h2{{color:#ef4444;font-size:24px;margin-bottom:15px;}}p{{color:#94a3b8;font-size:16px;margin-bottom:25px;}}
-        .btn{{display:block;width:100%;padding:16px;background:#38bdf8;color:#0f172a;font-weight:bold;font-size:18px;border-radius:12px;text-decoration:none;box-sizing:border-box;}}</style></head>
-        <body><div class="card">
-            <h2>⚠️ Allaqachon chiqib ketgansiz!</h2>
-            <p><b>{xodim['fame']}</b>, siz bugun allaqachon ishdan ketish davomatidan o'tgansiz. Ikkinchi imkoniyat berilmaydi!</p>
-            <a href="/" class="btn">Bosh sahifaga qaytish</a>
-        </div></body></html>
-        """
+        return xato_sahifa(
+            "⚠️ Allaqachon chiqib ketgansiz!",
+            f"<b>{xodim['fame']}</b>, siz bugun allaqachon ishdan ketish davomatidan o'tgansiz. Ikkinchi imkoniyat berilmaydi!",
+            "#ef4444")
 
     hozir = datetime.now(UZB_TZ)
     if action == 'CHIQISH':
-        hafta_kuni = hozir.weekday() 
+        hafta_kuni = hozir.weekday()
         soat = hozir.hour
 
-        if hafta_kuni == 5: 
+        if hafta_kuni == 5:
             if soat < 13:
-                return f"""
-                <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Vaqt xatosi</title>
-                <style>body{{font-family:'Segoe UI',sans-serif;background:#0f172a;color:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;}}
-                .card{{background:#1e293b;padding:40px 30px;border-radius:20px;text-align:center;max-width:420px;width:100%;box-shadow:0 15px 35px rgba(0,0,0,0.5);box-sizing:border-box;}}
-                h2{{color:#f97316;font-size:24px;margin-bottom:15px;}}p{{color:#94a3b8;font-size:16px;margin-bottom:25px;}}
-                .btn{{display:block;width:100%;padding:16px;background:#38bdf8;color:#0f172a;font-weight:bold;font-size:18px;border-radius:12px;text-decoration:none;box-sizing:border-box;}}</style></head>
-                <body><div class="card">
-                    <h2>⚠️ Vaqt yetmadi!</h2>
-                    <p>Shanba kuni ketish davomati faqat <b>soat 13:00 dan keyin</b> ochiladi. (Hozirgi vaqt: {hozir.strftime('%H:%M')})</p>
-                    <a href="/" class="btn">Bosh sahifaga qaytish</a>
-                </div></body></html>
-                """
-        else: 
+                return xato_sahifa(
+                    "⚠️ Vaqt yetmadi!",
+                    f"Shanba kuni ketish davomati faqat <b>soat 13:00 dan keyin</b> ochiladi. (Hozirgi vaqt: {hozir.strftime('%H:%M')})",
+                    "#f97316")
+        else:
             if soat < 16:
-                return f"""
-                <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Vaqt xatosi</title>
-                <style>body{{font-family:'Segoe UI',sans-serif;background:#0f172a;color:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;}}
-                .card{{background:#1e293b;padding:40px 30px;border-radius:20px;text-align:center;max-width:420px;width:100%;box-shadow:0 15px 35px rgba(0,0,0,0.5);box-sizing:border-box;}}
-                h2{{color:#f97316;font-size:24px;margin-bottom:15px;}}p{{color:#94a3b8;font-size:16px;margin-bottom:25px;}}
-                .btn{{display:block;width:100%;padding:16px;background:#38bdf8;color:#0f172a;font-weight:bold;font-size:18px;border-radius:12px;text-decoration:none;box-sizing:border-box;}}</style></head>
-                <body><div class="card">
-                    <h2>⚠️ Vaqt yetmadi!</h2>
-                    <p>Ish kunlari ketish davomati faqat <b>soat 16:00 dan keyin</b> ochiladi. (Hozirgi vaqt: {hozir.strftime('%H:%M')})</p>
-                    <a href="/" class="btn">Bosh sahifaga qaytish</a>
-                </div></body></html>
-                """
+                return xato_sahifa(
+                    "⚠️ Vaqt yetmadi!",
+                    f"Ish kunlari ketish davomati faqat <b>soat 16:00 dan keyin</b> ochiladi. (Hozirgi vaqt: {hozir.strftime('%H:%M')})",
+                    "#f97316")
 
     masofa = hisobla_masofa(lat, lon, TEHNIKUM_LAT, TEHNIKUM_LON)
 
     if masofa > DAVOMAT_MAX_MASOFA:
-        return f"""
-        <!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Masofa xatosi</title>
-        <style>body{{font-family:'Segoe UI',sans-serif;background:#0f172a;color:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;}}
-        .card{{background:#1e293b;padding:40px 30px;border-radius:20px;text-align:center;max-width:420px;width:100%;box-shadow:0 15px 35px rgba(0,0,0,0.5);box-sizing:border-box;}}
-        h2{{color:#ef4444;font-size:24px;margin-bottom:15px;}}p{{color:#94a3b8;font-size:16px;margin-bottom:25px;}}
-        .btn{{display:block;width:100%;padding:16px;background:#38bdf8;color:#0f172a;font-weight:bold;font-size:18px;border-radius:12px;text-decoration:none;box-sizing:border-box;}}</style></head>
-        <body><div class="card">
-            <h2>❌ Masofa xatosi!</h2>
-            <p>Siz texnikumdan <b>{int(masofa)} metr</b> uzoqdasiz. Davomat faqat {DAVOMAT_MAX_MASOFA} metr ichida qabul qilinadi!</p>
-            <a href="/" class="btn">Bosh sahifaga qaytish</a>
-        </div></body></html>
-        """
+        return xato_sahifa(
+            "❌ Masofa xatosi!",
+            f"Siz texnikumdan <b>{int(masofa)} metr</b> uzoqdasiz. Davomat faqat {DAVOMAT_MAX_MASOFA} metr ichida qabul qilinadi!",
+            "#ef4444")
 
     bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
     fayl_nomi = f"xodim_{xodim['id']}_{bugun}_{datetime.now(UZB_TZ).strftime('%H%M%S')}.jpg"
@@ -569,7 +568,7 @@ def result():
             holat_telegram = "Holat: O'z vaqtida keldi ✅"
 
         davomatni_saqlash(xodim, "KIRISH", vaqt_str, holat_str=holat_matn)
-        
+
         matn_xabar = f"🟢 <b>KIRISH (Kelish) - {bugun}</b>\n\n👤 <b>F.I.O:</b> {xodim['fame']}\n📋 <b>Lavozimi:</b> {xodim['lavozim']}\n⏰ <b>Vaqt:</b> {vaqt_str}\n{holat_telegram}\n📍 <b>Masofa:</b> {int(masofa)}m"
         telegramga_rasmli_xabar_yuborish(fayl_path, matn_xabar, target_chat_ids=target_chat_ids)
 
@@ -627,5 +626,7 @@ def result():
         </div></body></html>
         """
 
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
