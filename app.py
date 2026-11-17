@@ -16,7 +16,7 @@ TELEGRAM_BOT_TOKEN = "9241880191:AAHfYqQSQC9KOpeAfFdomyft9nhIBm-h6sk"
 ADMIN_CHAT_IDS = ["1179846016", "1838498079", "1611805500", "727029645"]
 
 EXCEL_HISOBOT = "davomat_hisobot.xlsx"
-XODIMLAR_FAYLI = "Umumiy maʼlumot.xlsx"
+XODIMLAR_FAYLI = Umumiy malumot.xlsx
 LOG_FILE = "attendance_log.csv"
 UPLOAD_FOLDER = "uploads"
 
