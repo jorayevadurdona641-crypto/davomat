@@ -7,15 +7,20 @@ import pandas as pd
 import openpyxl
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, FSInputFile
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 from flask import Flask
 from threading import Thread
 
 # --- SOZLAMALAR ---
-TELEGRAM_BOT_TOKEN = 9241880191:"TELEGRAM_BOT_TOKEN"
+# Token va admin paroli Render > Environment bo'limidan o'qiladi
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 ADMIN_IDS_INT = [1179846016, 1838498079, 1611805500, 727029645]
+
+if not TELEGRAM_BOT_TOKEN:
+    raise RuntimeError("TELEGRAM_BOT_TOKEN topilmadi! Render > Environment bo'limiga kiriting.")
 
 EXCEL_HISOBOT = "davomat_hisobot.xlsx"
 XODIMLAR_FAYLI = "Umumiy maʼlumot.xlsx"
@@ -48,6 +53,23 @@ class AttendanceState(StatesGroup):
     waiting_for_jshr = State()
     waiting_for_location = State()
     waiting_for_photo = State()
+
+class AdminState(StatesGroup):
+    waiting_for_password = State()
+
+# Parolni to'g'ri kiritgan foydalanuvchilar (bot qayta ishga tushsa, qayta kirish kerak)
+ADMIN_SESSIONS = set()
+# Noto'g'ri urinishlar soni
+ADMIN_FAILS = {}
+MAX_URINISH = 3
+
+ADMIN_KB = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="📋 Bugungi ro'yxat"), KeyboardButton(text="📊 Excel hisobot")],
+        [KeyboardButton(text="🚪 Chiqish")],
+    ],
+    resize_keyboard=True,
+)
 
 def hisobla_masofa(lat1, lon1, lat2, lon2):
     import math
@@ -137,6 +159,106 @@ def davomatni_saqlash_bot(jshr, teacher_name, position, vaqt_str, holat_turi):
 async def cmd_start_bot(message: Message, state: FSMContext):
     await state.set_state(AttendanceState.waiting_for_jshr)
     await message.answer("Assalomu alaykum! Davomat botiga xush kelibsiz. PNFL (JSHR) raqamingizni kiriting:")
+
+# ================= ADMIN BO'LIMI =================
+
+@dp.message(Command("admin"))
+async def cmd_admin(message: Message, state: FSMContext):
+    uid = message.from_user.id
+    if not ADMIN_PASSWORD:
+        await message.answer("⚠️ Admin paroli o'rnatilmagan (Render > Environment > ADMIN_PASSWORD).")
+        return
+    if ADMIN_FAILS.get(uid, 0) >= MAX_URINISH:
+        await message.answer("⛔ Juda ko'p noto'g'ri urinish. Kirish bloklandi.")
+        return
+    if uid in ADMIN_SESSIONS:
+        await state.clear()
+        await message.answer("🔐 Admin paneli:", reply_markup=ADMIN_KB)
+        return
+    await state.set_state(AdminState.waiting_for_password)
+    await message.answer("🔑 Admin parolini kiriting (bekor qilish: /bekor):", reply_markup=ReplyKeyboardRemove())
+
+@dp.message(Command("bekor"))
+async def cmd_bekor(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("Bekor qilindi.", reply_markup=ReplyKeyboardRemove())
+
+@dp.message(AdminState.waiting_for_password, F.text)
+async def process_admin_password(message: Message, state: FSMContext):
+    uid = message.from_user.id
+    kiritilgan = message.text.strip()
+    # Parol chatda ko'rinib qolmasligi uchun xabarni o'chiramiz
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    if kiritilgan == ADMIN_PASSWORD:
+        ADMIN_SESSIONS.add(uid)
+        ADMIN_FAILS.pop(uid, None)
+        await state.clear()
+        await message.answer("✅ Parol to'g'ri. Admin paneliga xush kelibsiz!", reply_markup=ADMIN_KB)
+    else:
+        ADMIN_FAILS[uid] = ADMIN_FAILS.get(uid, 0) + 1
+        qoldi = MAX_URINISH - ADMIN_FAILS[uid]
+        if qoldi <= 0:
+            await state.clear()
+            await message.answer("⛔ Parol noto'g'ri. Urinishlar tugadi, kirish bloklandi.")
+        else:
+            await message.answer(f"❌ Parol noto'g'ri. Yana {qoldi} ta urinish qoldi:")
+
+@dp.message(F.text == "📋 Bugungi ro'yxat")
+async def admin_bugungi(message: Message):
+    if message.from_user.id not in ADMIN_SESSIONS:
+        await message.answer("🔒 Avval /admin orqali kiring.")
+        return
+    bugun = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
+    if not os.path.exists(EXCEL_HISOBOT):
+        await message.answer("Hali hech qanday davomat yozuvi yo'q.")
+        return
+    try:
+        df = pd.read_excel(EXCEL_HISOBOT)
+        df = df[df["Sana"].astype(str) == bugun]
+    except Exception as e:
+        await message.answer(f"Hisobotni o'qishda xatolik: {e}")
+        return
+    if df.empty:
+        await message.answer(f"📋 {bugun}: bugun hali hech kim kelmagan.")
+        return
+
+    qatorlar = [f"📋 <b>{bugun} davomati</b> ({len(df)} kishi)\n"]
+    for i, (_, r) in enumerate(df.iterrows(), start=1):
+        qatorlar.append(
+            f"{i}. <b>{r['F.I.O']}</b> — {r['Lavozimi']}\n"
+            f"   🟢 {r['Kelish_Vaqti']}  🔴 {r['Ketish_Vaqti']}  | {r['Holat']}"
+        )
+    # Telegram xabar chegarasi 4096 belgi — bo'lib yuboramiz
+    matn = ""
+    for q in qatorlar:
+        if len(matn) + len(q) + 1 > 4000:
+            await message.answer(matn, parse_mode="HTML")
+            matn = ""
+        matn += q + "\n"
+    if matn:
+        await message.answer(matn, parse_mode="HTML")
+
+@dp.message(F.text == "📊 Excel hisobot")
+async def admin_excel(message: Message):
+    if message.from_user.id not in ADMIN_SESSIONS:
+        await message.answer("🔒 Avval /admin orqali kiring.")
+        return
+    if not os.path.exists(EXCEL_HISOBOT):
+        await message.answer("Hisobot fayli hali yaratilmagan.")
+        return
+    await message.answer_document(FSInputFile(EXCEL_HISOBOT), caption="📊 Davomat hisoboti")
+
+@dp.message(F.text == "🚪 Chiqish")
+async def admin_chiqish(message: Message, state: FSMContext):
+    ADMIN_SESSIONS.discard(message.from_user.id)
+    await state.clear()
+    await message.answer("Admin panelidan chiqdingiz.", reply_markup=ReplyKeyboardRemove())
+
+# ================= DAVOMAT BO'LIMI =================
 
 @dp.message(AttendanceState.waiting_for_jshr, F.text)
 async def process_jshr_bot(message: Message, state: FSMContext):
