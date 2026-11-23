@@ -12,7 +12,7 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "yakkabog_davomat_maxfiy_kalit")
 
 # --- TELEGRAM BOT TOKENI (Render > Environment bo'limidan olinadi) ---
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 ADMIN_CHAT_IDS = ["1179846016", "1838498079", "1611805500", "727029645"]
 ADMIN_PAROL = os.environ.get("ADMIN_PAROL", "7777")
 
@@ -165,22 +165,72 @@ def davomatni_saqlash(xodim, amal, vaqt, holat_str="O'z vaqtida ✅"):
 
 
 def telegramga_rasmli_xabar_yuborish(photo_path, matn, target_chat_ids):
+    """Har bir chat_id ga xabar yuboradi va natijani qaytaradi (xatolar Logs'da ko'rinadi)."""
+    natijalar = []
     if not TELEGRAM_BOT_TOKEN:
-        print("TELEGRAM_BOT_TOKEN o'rnatilmagan!")
-        return
+        print("❌ TELEGRAM_BOT_TOKEN o'rnatilmagan! Render > Environment bo'limiga kiriting.")
+        return [("-", False, "TELEGRAM_BOT_TOKEN o'rnatilmagan")]
     for chat_id in target_chat_ids:
-        if not chat_id or str(chat_id).strip() == "nan":
+        chat_id = str(chat_id).strip()
+        if not chat_id or chat_id == "nan":
             continue
+        chat_id = chat_id.split('.')[0]  # Excel'dan 12345.0 bo'lib kelsa
         try:
-            url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
             if photo_path and os.path.exists(photo_path):
                 with open(photo_path, 'rb') as photo:
-                    data = {"chat_id": str(chat_id).strip(), "caption": matn, "parse_mode": "HTML"}
-                    requests.post(url, data=data, files={"photo": photo})
+                    r = requests.post(
+                        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto",
+                        data={"chat_id": chat_id, "caption": matn, "parse_mode": "HTML"},
+                        files={"photo": photo}, timeout=20)
             else:
-                requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", data={"chat_id": str(chat_id).strip(), "text": matn, "parse_mode": "HTML"})
+                r = requests.post(
+                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                    data={"chat_id": chat_id, "text": matn, "parse_mode": "HTML"}, timeout=20)
+            javob = r.json()
+            if javob.get("ok"):
+                print(f"✅ Telegram: {chat_id} ga yuborildi")
+                natijalar.append((chat_id, True, "OK"))
+            else:
+                izoh = javob.get("description", str(javob))
+                print(f"❌ Telegram xatosi ({chat_id}): {izoh}")
+                natijalar.append((chat_id, False, izoh))
         except Exception as e:
-            print("Telegramga yuborishda xatolik:", e)
+            print(f"❌ Telegramga yuborishda xatolik ({chat_id}):", e)
+            natijalar.append((chat_id, False, str(e)))
+    return natijalar
+
+
+@app.route('/telegram-test')
+def telegram_test():
+    """Admin uchun: bot va har bir admin ID ga test xabar yuborib, natijani ko'rsatadi."""
+    if not session.get('admin_logged'):
+        return redirect(url_for('admin_login'))
+    qatorlar = []
+    if not TELEGRAM_BOT_TOKEN:
+        qatorlar.append("<li style='color:#ef4444'>❌ TELEGRAM_BOT_TOKEN topilmadi. Render &gt; davomat &gt; Environment bo'limiga kiriting.</li>")
+    else:
+        try:
+            me = requests.get(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getMe", timeout=15).json()
+            if me.get("ok"):
+                qatorlar.append(f"<li style='color:#22c55e'>✅ Token to'g'ri. Bot: @{me['result'].get('username')}</li>")
+            else:
+                qatorlar.append(f"<li style='color:#ef4444'>❌ Token noto'g'ri: {me.get('description')}</li>")
+        except Exception as e:
+            qatorlar.append(f"<li style='color:#ef4444'>❌ Telegram bilan aloqa yo'q: {e}</li>")
+        for chat_id, ok, izoh in telegramga_rasmli_xabar_yuborish(None, "🔔 Test xabar: davomat sayti botga ulangan ✅", ADMIN_CHAT_IDS):
+            if ok:
+                qatorlar.append(f"<li style='color:#22c55e'>✅ {chat_id}: xabar yuborildi</li>")
+            else:
+                maslahat = ""
+                if "chat not found" in izoh or "bot was blocked" in izoh or "Forbidden" in izoh:
+                    maslahat = " — bu admin botda /start bosmagan yoki botni bloklagan"
+                qatorlar.append(f"<li style='color:#ef4444'>❌ {chat_id}: {izoh}{maslahat}</li>")
+    return f"""<!DOCTYPE html><html lang="uz"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Telegram test</title>
+    <style>body{{font-family:'Segoe UI',sans-serif;background:#0f172a;color:#fff;padding:20px;}}
+    .card{{background:#1e293b;padding:25px;border-radius:16px;max-width:600px;margin:auto;}}
+    li{{margin:10px 0;font-size:16px;}} a{{color:#38bdf8;}}</style></head>
+    <body><div class="card"><h2 style="color:#38bdf8">📨 Telegram tekshiruvi</h2><ul>{''.join(qatorlar)}</ul>
+    <a href="/admin">⟵ Admin paneliga qaytish</a></div></body></html>"""
 
 
 def hisobla_masofa(lat1, lon1, lat2, lon2):
@@ -303,6 +353,7 @@ def admin_panel():
         <h2>🛡️ Xodimlar Davomati Kuzatuv Paneli</h2>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
             <a href="/" style="color:#38bdf8; text-decoration:none; font-size:16px; font-weight:bold;">⟵ Bosh sahifa</a>
+            <a href="/telegram-test" class="btn-download" style="background:#8b5cf6;">📨 Telegramni tekshirish</a>
             <a href="/download-excel" class="btn-download">📥 To'liq Excel Hisobotni Yuklab Olish</a>
         </div>
 
